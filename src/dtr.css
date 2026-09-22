@@ -1,0 +1,275 @@
+/* DTR — exact copy of preview-style.md, scoped to .dtr-page */
+.dtr-page {
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  padding: 9mm 9mm 7mm;
+  background: #fff;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 7mm;
+  align-items: start;
+  color: #111;
+  box-sizing: border-box;
+  position: relative;
+}
+
+.dtr {
+  width: 100%;
+  min-width: 0;
+  font-size: 9.2px;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #111;
+}
+
+.top-line {
+  position: relative;
+  height: 9mm;
+}
+
+.form-no {
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: 8.2px;
+  font-style: italic;
+  font-family: "Times New Roman", Times, serif;
+}
+
+.qr {
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 9.5mm;
+  height: 9.5mm;
+  shape-rendering: crispEdges;
+}
+
+.dtr h1 {
+  margin: -1mm 0 2.2mm;
+  text-align: center;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 15px;
+  line-height: 1;
+  letter-spacing: 0.1px;
+  font-weight: 700;
+}
+
+.identity {
+  width: 100%;
+}
+
+.field-row {
+  display: flex;
+  height: 5.2mm;
+  align-items: flex-end;
+  white-space: nowrap;
+  font-size: 9.2px;
+  gap: 2mm;
+}
+
+.field-label {
+  flex: 0 0 auto;
+}
+
+.field-value {
+  flex: 1;
+  font-weight: 700;
+  letter-spacing: 0.05px;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: 0.28mm solid #222;
+  align-self: stretch;
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 0.4mm;
+  min-width: 0;
+}
+
+.month-row {
+  position: relative;
+  height: 6mm;
+}
+
+.month-label {
+  margin-left: 4mm;
+  font-style: italic;
+  font-family: "Times New Roman", Times, serif;
+}
+
+.month-value {
+  flex: 1;
+  text-align: center;
+  font-weight: 700;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 10px;
+  border-bottom: 0.28mm solid #222;
+  align-self: stretch;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 0.4mm;
+}
+
+.official-hours {
+  text-align: center;
+  font-style: italic;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 9.4px;
+  margin: 1.6mm 0 1.2mm;
+}
+
+.attendance {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 8.2px;
+}
+
+.attendance th,
+.attendance td {
+  border: 0.28mm solid #222;
+  padding: 0;
+  text-align: center;
+  vertical-align: middle;
+  height: 6.35mm;
+  line-height: 1.03;
+  white-space: nowrap;
+}
+
+.attendance thead th {
+  font-weight: 400;
+  font-size: 8px;
+  padding: 0 0.5mm;
+}
+
+.attendance thead .header-main th {
+  height: 7mm;
+}
+
+.attendance thead .header-sub th {
+  height: 4.7mm;
+  font-size: 7px;
+  letter-spacing: 0;
+  padding: 0 0.3mm;
+}
+
+.attendance .day-col {
+  width: 28%;
+}
+
+.attendance th:nth-child(2),
+.attendance th:nth-child(3),
+.attendance th:nth-child(4),
+.attendance th:nth-child(5) {
+  width: 12.8%;
+}
+
+.attendance th:nth-child(6),
+.attendance th:nth-child(7) {
+  width: 7.2%;
+}
+
+.attendance thead .header-main th[colspan="2"] {
+  width: 11.4%;
+  white-space: nowrap;
+}
+
+.attendance .day-cell {
+  text-align: left;
+  padding-left: 1.1mm;
+}
+
+.total-row td {
+  height: 6.2mm;
+  font-weight: 700;
+}
+
+.total-row td:first-child {
+  text-align: right;
+  padding-right: 2mm;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 10px;
+}
+
+.certification {
+  margin: 2.1mm 0 0;
+  padding: 0;
+  width: 100%;
+  box-sizing: border-box;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 8.4px;
+  line-height: 1.25;
+  font-style: italic;
+  text-align: left;
+}
+
+.signature {
+  margin-top: 3.5mm;
+  text-align: center;
+  font-size: 8.6px;
+}
+
+.signature strong {
+  display: block;
+  font-size: 9.2px;
+  text-transform: uppercase;
+}
+
+.signature-line {
+  border-top: 0.28mm solid #222;
+  margin-top: 0.7mm;
+}
+
+.signature em {
+  display: block;
+  text-align: left;
+  margin-top: 1.2mm;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 8.3px;
+}
+
+.verification-line {
+  border-top: 0.28mm solid #222;
+  margin-top: 5mm;
+}
+
+.dtr-page::after {
+  content: "Standard Automated Recording of Attendance Host Generated";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 4mm;
+  text-align: center;
+  color: #777;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 7.5px;
+  font-style: italic;
+  pointer-events: none;
+}
+
+/* Preview wrapper — keep exact print size but scale on small screens */
+.dtr-preview-wrap {
+  overflow: auto;
+  background: #f1f1f1;
+  padding: 8px;
+  border-radius: 12px;
+}
+
+/* Responsive scale for preview inside app (not print) */
+@media screen and (max-width: 900px) {
+  .dtr-page {
+    transform: scale(0.85);
+    transform-origin: top center;
+    margin-bottom: -42mm;
+  }
+}
+@media screen and (max-width: 640px) {
+  .dtr-page {
+    width: 100%;
+    min-height: auto;
+    grid-template-columns: 1fr;
+    padding: 4mm;
+  }
+}

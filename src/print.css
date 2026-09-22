@@ -1,0 +1,77 @@
+/* Print: DTR only — single A4, full-bleed, no blanks */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+
+  html, body {
+    background: #fff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+  body::before { display: none !important; }
+
+  /* Hide chrome — display:none removes from layout, so no blank pages */
+  header,
+  nav,
+  #root > div:not(.page),
+  [role="status"] {
+    display: none !important;
+  }
+
+  /* Page container — remove app spacing that creates blank pages */
+  .page {
+    display: block !important;
+    max-width: none !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+  }
+  .page > *:not(.dtr-preview-card) {
+    display: none !important;
+  }
+
+  /* Inside preview card, hide everything except the DTR wrap */
+  .dtr-preview-card {
+    display: block !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #fff !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+  .dtr-preview-card > div:not(.dtr-preview-wrap),
+  .dtr-preview-card > p {
+    display: none !important;
+  }
+
+  .dtr-preview-wrap {
+    display: block !important;
+    background: #fff !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* DTR duplex — exact preview size, single page */
+  .dtr-page {
+    display: grid !important;
+    width: 210mm !important;
+    min-height: 0 !important;
+    height: auto !important;
+    margin: 0 auto !important;
+    padding: 9mm 9mm 7mm !important;
+    background: #fff !important;
+    box-shadow: none !important;
+    transform: none !important;
+    break-after: avoid;
+    break-inside: avoid;
+    page-break-after: avoid;
+    page-break-inside: avoid;
+  }
+}
