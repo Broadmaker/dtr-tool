@@ -30,6 +30,7 @@ import { monthName, toISODate } from './lib/dateUtils';
 import { applyTheme, loadTheme } from './lib/theme';
 import type { Theme } from './lib/theme';
 import { clearUndoSnapshot, loadPrefs, loadUndoSnapshot, savePrefs, saveUndoSnapshot } from './lib/storage';
+import { buildFlashFillOverrides, computeTypicalTimes } from './lib/fill';
 
 type Step = 0 | 1 | 2 | 3 | 4 | 5;
 const STEP_LABELS = ['Upload', 'Employees', 'Period', 'Review', 'Holidays', 'Export'];
@@ -191,6 +192,18 @@ export default function App() {
     [merged, month, year, holidays, empLeaves],
   );
   const issues = useMemo(() => validateDays(days), [days]);
+  const typical = useMemo(() => computeTypicalTimes(days, (empInfos[activeEmp]?.officialHours ?? prefs.officialHours)), [days, empInfos, activeEmp, prefs.officialHours]);
+  const typicalHint = `${typical.amIn} · ${typical.amOut} · ${typical.pmIn} · ${typical.pmOut}`;
+  const flashFill = useCallback(() => {
+    const toFill = buildFlashFillOverrides(days, typical);
+    const count = Object.keys(toFill).length;
+    if (!count) { flash('No blank workdays to fill.'); return; }
+    if (!window.confirm(`Flash Fill ${count} blank/incomplete workday${count > 1 ? 's' : ''} with ${typicalHint} for ${activeEmp}? You can Undo.`)) return;
+    setHistory((h) => [...h.slice(-19), overrides]);
+    saveUndoSnapshot(activeEmp, Object.fromEntries(Object.entries(merged).map(([k, v]) => [k, { amIn: v.amIn, amOut: v.amOut, pmIn: v.pmIn, pmOut: v.pmOut }])));
+    setOverrides((o) => ({ ...o, [activeEmp]: { ...(o[activeEmp] ?? {}), ...toFill } }));
+    flash(`Flash-filled ${count} day${count > 1 ? 's' : ''} for ${activeEmp.split(' ')[0]}`);
+  }, [days, typical, typicalHint, activeEmp, merged, overrides, flash]);
   const activeStored = empInfos[activeEmp] ?? {};
   const info: EmployeeInfo = {
     name: (activeStored.name ?? activeEmp).toUpperCase(),
@@ -467,7 +480,7 @@ export default function App() {
                     </Btn>
                   </div>
                 </Card>
-                <AttendanceStep days={days} holidays={holidays} leaves={empLeaves} onEdit={edit} onHoliday={toggleHoliday} onLeave={toggleLeave} onClear={clearDay} />
+                <AttendanceStep days={days} holidays={holidays} leaves={empLeaves} onEdit={edit} onHoliday={toggleHoliday} onLeave={toggleLeave} onClear={clearDay} onFlashFill={flashFill} typicalHint={typicalHint} />
               </div>
             )}
             {step === 4 && (

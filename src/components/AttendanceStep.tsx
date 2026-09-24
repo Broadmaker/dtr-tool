@@ -1,5 +1,5 @@
 import { memo, useMemo, useState } from 'react';
-import { AlertTriangle, Clock, Pencil, Search, X } from 'lucide-react';
+import { AlertTriangle, Clock, Pencil, Search, Sparkles, X } from 'lucide-react';
 import type { DayEntry, HolidayEntry, LeaveEntry, ResolvedDay } from '../lib/types';
 import { prettyDate } from '../lib/dateUtils';
 import { Btn, Card, SectionTitle, TextInput } from './ui';
@@ -21,6 +21,8 @@ function AttendanceStep({
   onHoliday,
   onLeave,
   onClear,
+  onFlashFill,
+  typicalHint,
 }: {
   days: ResolvedDay[];
   holidays: HolidayEntry[];
@@ -29,6 +31,8 @@ function AttendanceStep({
   onHoliday: (date: string) => void;
   onLeave: (date: string) => void;
   onClear: (date: string) => void;
+  onFlashFill?: () => void;
+  typicalHint?: string;
 }) {
   const [q, setQ] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
@@ -43,6 +47,8 @@ function AttendanceStep({
     if (filter === 'edited' && !d.entry.corrected) return false;
     return true;
   }), [days, q, filter]);
+
+  const fillable = days.filter((d) => (d.kind === 'empty' || d.incomplete) && d.kind !== 'holiday' && d.kind !== 'leave' && d.weekday !== 0 && d.weekday !== 6).length;
 
   const badge = (d: ResolvedDay) => {
     if (d.kind === 'holiday')
@@ -60,6 +66,13 @@ function AttendanceStep({
         eyebrow={`Review · ${editedCount} edited · ${issueCount} issues`}
         title="Attendance"
         hint="Tap a time to correct it. Edited cells get an amber ring. H = holiday, L = leave, X = reset day."
+        action={
+          onFlashFill && fillable > 0 ? (
+            <Btn size="sm" variant="primary" onClick={onFlashFill} title={typicalHint}>
+              <Sparkles className="h-3.5 w-3.5" /> Flash Fill {fillable} blank{fillable > 1 ? 's' : ''}
+            </Btn>
+          ) : undefined
+        }
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
@@ -174,7 +187,8 @@ function AttendanceStep({
       </div>
 
       <p className="mt-3 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
-        Holidays & leaves clear punches on export. Edited times are flagged for the AO.
+        Holidays & leaves clear punches on export. Edited times are flagged for the AO.{' '}
+        {typicalHint && <span className="font-medium text-slate-700 dark:text-slate-300">Flash Fill uses {typicalHint} with ± variation per day (not cloned).</span>}
       </p>
     </Card>
   );
