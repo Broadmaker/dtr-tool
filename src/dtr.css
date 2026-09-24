@@ -186,6 +186,17 @@
   font-weight: 700;
 }
 
+.holiday-row td.holiday-cell,
+.leave-row td.leave-cell {
+  font-weight: 700;
+  font-size: 7.5px;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  background: #f8fafc;
+}
+.holiday-row td.holiday-cell { color: #b91c1c; }
+.leave-row td.leave-cell { color: #0369a1; }
+
 .total-row td:first-child {
   text-align: right;
   padding-right: 2mm;

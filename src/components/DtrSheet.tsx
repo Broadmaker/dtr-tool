@@ -130,6 +130,31 @@ function DTRSection({
             const u = undertimeForDay(d);
             const isWeekend = d.weekday === 0 || d.weekday === 6;
             const label = isWeekend ? `${d.dayOfMonth} ${['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.weekday]}` : String(d.dayOfMonth);
+            const isHoliday = d.kind === 'holiday';
+            const isLeave = d.kind === 'leave';
+            if (isHoliday) {
+              const desc = d.holiday?.description ? ` — ${d.holiday.description}` : '';
+              const type = d.holiday?.type ? ` (${d.holiday.type})` : '';
+              return (
+                <tr key={d.date} className="holiday-row">
+                  <td className="day-cell">{label}</td>
+                  <td colSpan={4} className="holiday-cell">HOLIDAY{type}{desc}</td>
+                  <td>{u.h}</td>
+                  <td>{u.m}</td>
+                </tr>
+              );
+            }
+            if (isLeave) {
+              const lt = (d.leaveType ?? 'LEAVE').toUpperCase();
+              return (
+                <tr key={d.date} className="leave-row">
+                  <td className="day-cell">{label}</td>
+                  <td colSpan={4} className="leave-cell">{lt}</td>
+                  <td>{u.h}</td>
+                  <td>{u.m}</td>
+                </tr>
+              );
+            }
             return (
               <tr key={d.date}>
                 <td className="day-cell">{label}</td>

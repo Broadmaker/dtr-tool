@@ -45,6 +45,17 @@ export async function buildBatchWorkbook(bundles: ExportBundle[]) {
     ];
     for (const d of b.days) {
       const u = undertimeForDay(d);
+      if (d.kind === 'holiday') {
+        const desc = d.holiday?.description ? ` — ${d.holiday.description}` : '';
+        const type = d.holiday?.type ? ` (${d.holiday.type})` : '';
+        rows.push([dayLabel(d), `HOLIDAY${type}${desc}`, '', '', '', u.h, u.m]);
+        continue;
+      }
+      if (d.kind === 'leave') {
+        const lt = (d.leaveType ?? 'LEAVE').toUpperCase();
+        rows.push([dayLabel(d), lt, '', '', '', u.h, u.m]);
+        continue;
+      }
       rows.push([
         dayLabel(d),
         fmtTime(d.entry.amIn),

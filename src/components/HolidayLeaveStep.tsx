@@ -29,6 +29,7 @@ export default function HolidayLeaveStep({
   onDelLeave,
   onLeaveAll,
   onDelLeaveAll,
+  onSwitchEmp,
 }: {
   activeEmp: string;
   selectedCount: number;
@@ -42,6 +43,7 @@ export default function HolidayLeaveStep({
   onDelLeave: (date: string) => void;
   onLeaveAll: (l: LeaveEntry) => void;
   onDelLeaveAll: (date: string) => void;
+  onSwitchEmp: (name: string) => void;
 }) {
   const [hd, setHd] = useState('');
   const [hn, setHn] = useState('');
@@ -62,24 +64,65 @@ export default function HolidayLeaveStep({
       <SectionTitle
         eyebrow="Exceptions"
         title="Holidays & leaves"
-        hint={
-          selectedCount > 1
-            ? `Holidays apply to all ${selectedCount} selected. Leaves default to ${activeEmp || 'current employee'} — toggle bulk to apply to everyone.`
-            : `Holidays apply to everyone. Leaves apply only to ${activeEmp || 'the current employee'}.`
-        }
+        hint="Holidays are global (every DTR). Leaves are per-person — pick who you are editing below."
       />
+
+      {/* Who am I editing? — fixes 'not sure whose DTR im inputting' */}
+      {selectedCount > 0 && (
+        <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-700 dark:bg-slate-900/50">
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-slate-600 dark:text-slate-300">
+            <Users className="h-3.5 w-3.5" /> Editing for
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {selectedNames.map((name) => (
+              <button
+                key={name}
+                type="button"
+                onClick={() => onSwitchEmp(name)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                  name === activeEmp
+                    ? 'border-slate-900 bg-slate-900 text-white shadow-sm dark:border-white dark:bg-white dark:text-slate-900'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:text-white'
+                }`}
+              >
+                {name}
+                {name === activeEmp && <span className="ml-1.5 opacity-70">• active</span>}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-900/50">
+              <CalendarOff className="h-3 w-3" /> Holidays = everyone
+            </span>{' '}
+            <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800 ring-1 ring-sky-200 dark:bg-sky-950/40 dark:text-sky-200 dark:ring-sky-900/50">
+              <Leaf className="h-3 w-3" /> Leaves = {activeEmp.split(' ')[0] || 'active person'} only
+            </span>
+            {selectedCount > 1 && (
+              <span> — toggle “Apply to all” under Leaves to bulk-add.</span>
+            )}
+          </p>
+        </div>
+      )}
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* Holidays - global */}
         <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/30">
           <h3 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-slate-600 dark:text-slate-300">
             <CalendarOff className="h-3.5 w-3.5" /> Holidays
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-amber-700 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200">Global</span>
             <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
               {holidays.length}
             </span>
           </h3>
-          <p className="mb-3 text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-            <Users className="h-3 w-3" /> Applies to all {selectedCount} selected
+          <p className="mb-3 flex flex-wrap items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
+            <span className="inline-flex items-center gap-1"><Users className="h-3 w-3" /> Affects every selected DTR</span>
+            <span className="hidden sm:inline text-slate-300 dark:text-slate-600">·</span>
+            <span className="flex flex-wrap gap-1">
+              {selectedNames.slice(0, 3).map((n) => (
+                <span key={n} className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-slate-700 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700">{n.split(' ')[0]}</span>
+              ))}
+              {selectedNames.length > 3 && <span className="text-slate-500">+{selectedNames.length - 3} more</span>}
+            </span>
           </p>
 
           <div className="grid gap-3">
@@ -145,17 +188,20 @@ export default function HolidayLeaveStep({
         </div>
 
         {/* Leaves - per employee with bulk */}
-        <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/30">
+        <div className="rounded-xl border border-sky-100 bg-sky-50/40 p-4 dark:border-sky-900/30 dark:bg-sky-950/20">
           <h3 className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-slate-600 dark:text-slate-300">
             <Leaf className="h-3.5 w-3.5" /> Leaves
-            <span className="ml-auto rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-              {leaves.length}
+            <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-sky-700 ring-1 ring-sky-200 dark:bg-sky-950/40 dark:text-sky-200">Per-person</span>
+            <span className="ml-auto rounded-full bg-white px-2 py-0.5 text-xs font-medium text-slate-700 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300">
+              {leaves.length} for {activeEmp.split(' ')[0] || '—'}
             </span>
           </h3>
-          <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
-            Editing <span className="font-semibold text-slate-900 dark:text-white">{activeEmp}</span>
+          <p className="mb-3 flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300">
+            <span className="h-2 w-2 rounded-full bg-sky-500" aria-hidden />
+            Adding to <span className="font-semibold text-slate-900 dark:text-white">{activeEmp || '—'}</span>
+            <span className="hidden sm:inline">— only this DTR</span>
             {selectedCount > 1 && (
-              <span> · {selectedCount} selected · {otherLeavesCount} leaves on others</span>
+              <span className="text-slate-500 dark:text-slate-400">· {otherLeavesCount} on others</span>
             )}
           </p>
 

@@ -9,6 +9,7 @@ import {
   FileText,
   Leaf,
   Printer,
+  Users,
 } from 'lucide-react';
 import type { EmployeeInfo, HolidayEntry, LeaveEntry, ResolvedDay, ValidationIssue } from '../lib/types';
 import type { ExportBundle } from '../lib/export';
@@ -24,6 +25,8 @@ export default function PreviewStep({
   leaves,
   issues,
   selectedCount,
+  selectedNames,
+  activeEmp,
   fileBase,
   onFileBase,
   onPrint,
@@ -31,6 +34,7 @@ export default function PreviewStep({
   onXlsx,
   onZip,
   bundles,
+  onSwitchEmp,
 }: {
   info: EmployeeInfo;
   month: number;
@@ -40,6 +44,8 @@ export default function PreviewStep({
   leaves: LeaveEntry[];
   issues: ValidationIssue[];
   selectedCount: number;
+  selectedNames: string[];
+  activeEmp: string;
   fileBase: string;
   onFileBase: (v: string) => void;
   onPrint: () => void;
@@ -47,6 +53,7 @@ export default function PreviewStep({
   onXlsx: () => void;
   onZip: () => void;
   bundles: ExportBundle[];
+  onSwitchEmp: (name: string) => void;
 }) {
   const [busy, setBusy] = useState('');
   const warns = issues.filter((i) => i.level === 'warning');
@@ -66,8 +73,37 @@ export default function PreviewStep({
       <SectionTitle
         eyebrow={`Export · ${selectedCount} employee${selectedCount > 1 ? 's' : ''}`}
         title="Preview & export"
-        hint={selectedCount > 1 ? "Review the CSC layout for the current employee. Excel, ZIP and Print all now bundle every selected employee." : "Review the CSC layout. Excel and ZIP bundle every selected employee; Print is for the current one."}
+        hint={selectedCount > 1 ? "Preview one, export all — switch person below. Excel / ZIP / Print all bundle every selected employee." : "Review the CSC layout. Excel, ZIP and Print export this DTR."}
       />
+
+      {/* Fast switch — fixes 'no fast switch' for selected personnel */}
+      {selectedCount > 1 && (
+        <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-700 dark:bg-slate-900/50">
+          <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-slate-600 dark:text-slate-300">
+            <Users className="h-3.5 w-3.5" /> Previewing
+          </p>
+          <div className="flex flex-wrap gap-1.5">
+            {selectedNames.map((name) => (
+              <button
+                key={name}
+                type="button"
+                onClick={() => onSwitchEmp(name)}
+                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+                  name === activeEmp
+                    ? 'border-slate-900 bg-slate-900 text-white shadow-sm dark:border-white dark:bg-white dark:text-slate-900'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:text-white'
+                }`}
+              >
+                {name}
+                {name === activeEmp && <span className="ml-1.5 opacity-70">• viewing</span>}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
+            Showing <span className="font-semibold text-slate-900 dark:text-white">{activeEmp}</span> — {selectedCount - 1} other{selectedCount - 1 === 1 ? '' : 's'} will export too (Print all / Excel / ZIP)
+          </p>
+        </div>
+      )}
 
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[

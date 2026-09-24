@@ -45,7 +45,7 @@ export default function App() {
   const [holidays, setHolidays] = useState<{ date: string; description: string; type: 'Regular' | 'Special' }[]>([]);
   const [leaves, setLeaves] = useState<Record<string, LeaveEntry[]>>({});
   const [prefs, setPrefs] = useState(loadPrefs);
-  const [infoName, setInfoName] = useState('');
+  const [empInfos, setEmpInfos] = useState<Record<string, Partial<EmployeeInfo>>>({});
   const [step, setStep] = useState<Step>(0);
   const [mapFile, setMapFile] = useState<File | null>(null);
   const [mapPreview, setMapPreview] = useState<SheetPreview | null>(null);
@@ -94,7 +94,7 @@ export default function App() {
     setMonth(g.month); setYear(g.year);
     setSelected(new Set(r.employees.map((e) => e.name)));
     setActiveEmp(r.employees[0]?.name ?? '');
-    setInfoName(r.employees[0]?.name ?? '');
+    setEmpInfos({});
     setOverrides({}); setHolidays([]); setLeaves({});
     setMapFile(null); setMapPreview(null); setMapError('');
     setStep(1);
@@ -104,7 +104,7 @@ export default function App() {
   const clearAll = () => {
     if (!window.confirm('Remove uploaded data and settings from this session?')) return;
     setParsed(null); setFileName(''); setSelected(new Set());
-    setActiveEmp(''); setOverrides({}); setHolidays([]); setLeaves({}); setInfoName('');
+    setActiveEmp(''); setOverrides({}); setHolidays([]); setLeaves({}); setEmpInfos({});
     setMapFile(null); setMapPreview(null); setMapError('');
     setStep(0);
   };
@@ -191,9 +191,12 @@ export default function App() {
     [merged, month, year, holidays, empLeaves],
   );
   const issues = useMemo(() => validateDays(days), [days]);
+  const activeStored = empInfos[activeEmp] ?? {};
   const info: EmployeeInfo = {
-    name: (infoName || activeEmp).toUpperCase(),
-    position: prefs.position, office: prefs.office, officialHours: prefs.officialHours,
+    name: (activeStored.name ?? activeEmp).toUpperCase(),
+    position: activeStored.position ?? prefs.position,
+    office: activeStored.office ?? prefs.office,
+    officialHours: activeStored.officialHours ?? prefs.officialHours,
   };
 
   const toggle = useCallback((n: string) => setSelected((s) => {
@@ -270,16 +273,29 @@ export default function App() {
       return next;
     });
 
+  const patchEmpInfo = (name: string, patch: Partial<EmployeeInfo>) =>
+    setEmpInfos((prev) => ({ ...prev, [name]: { ...(prev[name] ?? {}), ...patch } }));
+
+  const applyEmpFieldToAll = (field: keyof EmployeeInfo, value: string) =>
+    setEmpInfos((prev) => {
+      const next: Record<string, Partial<EmployeeInfo>> = { ...prev };
+      for (const n of selected) next[n] = { ...(next[n] ?? {}), [field]: value };
+      return next;
+    });
+
   const chosen = effectiveEmployees.filter((e) => selected.has(e.name)) ?? [];
 
   const bundles = (): ExportBundle[] =>
     chosen.map((e) => {
       const empMerged = { ...e.days, ...(effectiveOverrides[e.name] ?? {}) };
       const empLv = leaves[e.name] ?? [];
+      const s = empInfos[e.name] ?? {};
       return {
         info: {
-          name: (e.name === activeEmp ? infoName || e.name : e.name).toUpperCase(),
-          position: prefs.position, office: prefs.office, officialHours: prefs.officialHours,
+          name: (s.name ?? e.name).toUpperCase(),
+          position: s.position ?? prefs.position,
+          office: s.office ?? prefs.office,
+          officialHours: s.officialHours ?? prefs.officialHours,
         },
         month, year,
         days: resolveMonth(empMerged, month, year, holidays, empLv),
@@ -398,12 +414,29 @@ export default function App() {
             {step === 2 && (
               <ConfigStep
                 month={month} year={year}
-                info={{ ...info, name: infoName || activeEmp }}
+                info={info}
+                activeEmp={activeEmp}
+                selectedNames={chosen.map((c) => c.name)}
+                selectedCount={chosen.length}
                 onMonth={setMonth} onYear={setYear}
                 onInfo={(p) => {
-                  if (p.name !== undefined) setInfoName(p.name);
-                  patchPrefs({ position: p.position ?? prefs.position, office: p.office ?? prefs.office, officialHours: p.officialHours ?? prefs.officialHours });
+                  // Name/position/office/hours are per-employee now; keep prefs as default for next time
+                  if (p.name !== undefined) patchEmpInfo(activeEmp, { name: p.name });
+                  if (p.position !== undefined) {
+                    patchEmpInfo(activeEmp, { position: p.position });
+                    patchPrefs({ position: p.position });
+                  }
+                  if (p.office !== undefined) {
+                    patchEmpInfo(activeEmp, { office: p.office });
+                    patchPrefs({ office: p.office });
+                  }
+                  if (p.officialHours !== undefined) {
+                    patchEmpInfo(activeEmp, { officialHours: p.officialHours });
+                    patchPrefs({ officialHours: p.officialHours });
+                  }
                 }}
+                onApplyFieldToAll={applyEmpFieldToAll}
+                onSwitchEmp={(name) => setActiveEmp(name)}
               />
             )}
             {step === 3 && (
@@ -421,7 +454,7 @@ export default function App() {
                         <button
                           key={e.name}
                           type="button"
-                          onClick={() => { setActiveEmp(e.name); setInfoName(e.name); }}
+                          onClick={() => setActiveEmp(e.name)}
                           className={`rounded-full border px-3 py-1 text-xs font-medium transition-all ${e.name === activeEmp ? 'border-slate-900 bg-slate-900 text-white shadow-sm dark:border-white dark:bg-white dark:text-slate-900' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400'}`}
                         >
                           {e.name}
@@ -465,13 +498,15 @@ export default function App() {
                   }
                   return next;
                 })}
+                onSwitchEmp={(name) => setActiveEmp(name)}
               />
             )}
             {step === 5 && (
               <PreviewStep
                 info={info} month={month} year={year} days={days} holidays={holidays} leaves={empLeaves} issues={issues}
-                selectedCount={chosen.length} fileBase={prefs.fileBase || 'DTR'} onFileBase={(v) => patchPrefs({ fileBase: v })}
-                onPrint={doPrintSingle} onPrintAll={doPrintBatch} onXlsx={doXlsx} onZip={doZip} bundles={bundles()}
+                selectedCount={chosen.length} selectedNames={chosen.map((c) => c.name)} activeEmp={activeEmp}
+                fileBase={prefs.fileBase || 'DTR'} onFileBase={(v) => patchPrefs({ fileBase: v })}
+                onPrint={doPrintSingle} onPrintAll={doPrintBatch} onXlsx={doXlsx} onZip={doZip} bundles={bundles()} onSwitchEmp={(name) => setActiveEmp(name)}
               />
             )}
 
