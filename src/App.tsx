@@ -18,7 +18,7 @@ import {
   Users,
 } from 'lucide-react';
 import type { ParseResult } from './lib/parser';
-import { autoMap, guessPeriod, parseBiometricFile, readSheetGrid } from './lib/parser';
+import { autoMap, guessPeriod, parseBiometricFile, readSheetGrid, remapMatrixEmployees } from './lib/parser';
 import { resolveMonth, validateDays } from './lib/rules';
 import type { DayEntry, EmployeeInfo, LeaveEntry } from './lib/types';
 import type { ColumnMap, SheetPreview } from './lib/columns';
@@ -26,7 +26,7 @@ import { unmapped } from './lib/columns';
 import { downloadXlsx, downloadZip } from './lib/export';
 import type { ExportBundle } from './lib/export';
 import { makeSampleFile } from './lib/sample';
-import { monthName } from './lib/dateUtils';
+import { monthName, toISODate } from './lib/dateUtils';
 import { applyTheme, loadTheme } from './lib/theme';
 import type { Theme } from './lib/theme';
 import { clearUndoSnapshot, loadPrefs, loadUndoSnapshot, savePrefs, saveUndoSnapshot } from './lib/storage';
@@ -146,14 +146,37 @@ export default function App() {
     }
   };
 
+  // Day-matrix: remap stored ISO dates when user changes period (day-number preserving)
+  const effectiveEmployees = useMemo(() => {
+    if (!parsed?.matrixAssumed) return parsed?.employees ?? [];
+    return remapMatrixEmployees(parsed.employees, parsed.matrixAssumed, { month, year });
+  }, [parsed, month, year]);
+
+  const effectiveOverrides = useMemo(() => {
+    if (!parsed?.matrixAssumed) return overrides;
+    const a = parsed.matrixAssumed;
+    if (a.month === month && a.year === year) return overrides;
+    const out: Record<string, Record<string, DayEntry>> = {};
+    for (const [emp, map] of Object.entries(overrides)) {
+      const remapped: Record<string, DayEntry> = {};
+      for (const [iso, entry] of Object.entries(map)) {
+        const day = Number(iso.slice(8, 10));
+        if (!Number.isFinite(day) || day < 1 || day > 31) continue;
+        remapped[toISODate(year, month, day)] = entry;
+      }
+      out[emp] = remapped;
+    }
+    return out;
+  }, [overrides, parsed, month, year]);
+
   const baseDays = useMemo(() => {
-    const emp = parsed?.employees.find((e) => e.name === activeEmp);
+    const emp = effectiveEmployees.find((e) => e.name === activeEmp);
     return emp?.days ?? {};
-  }, [parsed, activeEmp]);
+  }, [effectiveEmployees, activeEmp]);
 
   const merged: Record<string, DayEntry> = useMemo(
-    () => ({ ...baseDays, ...(overrides[activeEmp] ?? {}) }),
-    [baseDays, overrides, activeEmp],
+    () => ({ ...baseDays, ...(effectiveOverrides[activeEmp] ?? {}) }),
+    [baseDays, effectiveOverrides, activeEmp],
   );
 
   const hasUndoSnapshot = useMemo(() => {
@@ -201,7 +224,7 @@ export default function App() {
       return;
     }
     const snap = loadUndoSnapshot();
-    if (snap && parsed?.employees.some((e) => e.name === snap.emp)) {
+    if (snap && effectiveEmployees.some((e) => e.name === snap.emp)) {
       setActiveEmp(snap.emp);
       setOverrides((o) => ({
         ...o,
@@ -247,11 +270,11 @@ export default function App() {
       return next;
     });
 
-  const chosen = parsed?.employees.filter((e) => selected.has(e.name)) ?? [];
+  const chosen = effectiveEmployees.filter((e) => selected.has(e.name)) ?? [];
 
   const bundles = (): ExportBundle[] =>
     chosen.map((e) => {
-      const empMerged = { ...e.days, ...(overrides[e.name] ?? {}) };
+      const empMerged = { ...e.days, ...(effectiveOverrides[e.name] ?? {}) };
       const empLv = leaves[e.name] ?? [];
       return {
         info: {
@@ -272,6 +295,24 @@ export default function App() {
     await downloadXlsx(b, b.length === 1 ? `${base}_${b[0].info.name}.xlsx` : `${base}_${stamp}.xlsx`);
     flash(`Excel downloaded (${b.length} sheet${b.length > 1 ? 's' : ''}).`);
   };
+  const doPrintSingle = () => {
+    document.documentElement.setAttribute('data-print', 'single');
+    window.print();
+    const clear = () => document.documentElement.removeAttribute('data-print');
+    window.addEventListener('afterprint', clear, { once: true });
+    setTimeout(clear, 2000);
+  };
+  const doPrintBatch = () => {
+    const b = bundles();
+    if (!b.length) { flash('Select at least one employee first.'); return; }
+    if (b.length === 1) { doPrintSingle(); return; }
+    document.documentElement.setAttribute('data-print', 'batch');
+    window.print();
+    const clear = () => document.documentElement.removeAttribute('data-print');
+    window.addEventListener('afterprint', clear, { once: true });
+    setTimeout(clear, 2000);
+  };
+
   const doZip = async () => {
     const b = bundles();
     if (!b.length) { flash('Select at least one employee first.'); return; }
@@ -350,8 +391,8 @@ export default function App() {
 
             {step === 1 && (
               <EmployeeStep
-                list={parsed.employees} selected={selected} onToggle={toggle}
-                onAll={(v) => setSelected(new Set(v ? parsed.employees.map((e) => e.name) : []))}
+                list={effectiveEmployees} selected={selected} onToggle={toggle}
+                onAll={(v) => setSelected(new Set(v ? effectiveEmployees.map((e) => e.name) : []))}
               />
             )}
             {step === 2 && (
@@ -427,7 +468,11 @@ export default function App() {
               />
             )}
             {step === 5 && (
-              <PreviewStep info={info} month={month} year={year} days={days} holidays={holidays} leaves={empLeaves} issues={issues} selectedCount={chosen.length} fileBase={prefs.fileBase || 'DTR'} onFileBase={(v) => patchPrefs({ fileBase: v })} onPrint={() => window.print()} onXlsx={doXlsx} onZip={doZip} />
+              <PreviewStep
+                info={info} month={month} year={year} days={days} holidays={holidays} leaves={empLeaves} issues={issues}
+                selectedCount={chosen.length} fileBase={prefs.fileBase || 'DTR'} onFileBase={(v) => patchPrefs({ fileBase: v })}
+                onPrint={doPrintSingle} onPrintAll={doPrintBatch} onXlsx={doXlsx} onZip={doZip} bundles={bundles()}
+              />
             )}
 
             <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-4 dark:border-slate-800">

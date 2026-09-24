@@ -11,6 +11,7 @@ import {
   Printer,
 } from 'lucide-react';
 import type { EmployeeInfo, HolidayEntry, LeaveEntry, ResolvedDay, ValidationIssue } from '../lib/types';
+import type { ExportBundle } from '../lib/export';
 import DtrSheet from './DtrSheet';
 import { Btn, Card, SectionTitle } from './ui';
 
@@ -26,8 +27,10 @@ export default function PreviewStep({
   fileBase,
   onFileBase,
   onPrint,
+  onPrintAll,
   onXlsx,
   onZip,
+  bundles,
 }: {
   info: EmployeeInfo;
   month: number;
@@ -40,8 +43,10 @@ export default function PreviewStep({
   fileBase: string;
   onFileBase: (v: string) => void;
   onPrint: () => void;
+  onPrintAll: () => void;
   onXlsx: () => void;
   onZip: () => void;
+  bundles: ExportBundle[];
 }) {
   const [busy, setBusy] = useState('');
   const warns = issues.filter((i) => i.level === 'warning');
@@ -61,7 +66,7 @@ export default function PreviewStep({
       <SectionTitle
         eyebrow={`Export · ${selectedCount} employee${selectedCount > 1 ? 's' : ''}`}
         title="Preview & export"
-        hint="Review the CSC layout. Excel and ZIP bundle every selected employee; Print is for the current one."
+        hint={selectedCount > 1 ? "Review the CSC layout for the current employee. Excel, ZIP and Print all now bundle every selected employee." : "Review the CSC layout. Excel and ZIP bundle every selected employee; Print is for the current one."}
       />
 
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -103,10 +108,32 @@ export default function PreviewStep({
         <DtrSheet info={info} month={month} year={year} days={days} holidays={holidays} leaves={leaves} />
       </div>
 
+      {/* Batch print: hidden on screen, visible only in print when data-print=batch */}
+      {bundles.length > 0 && (
+        <div className="print-batch" aria-hidden>
+          {bundles.map((b) => (
+            <DtrSheet
+              key={b.info.name}
+              info={b.info}
+              month={b.month}
+              year={b.year}
+              days={b.days}
+              holidays={b.holidays}
+              leaves={b.leaves}
+            />
+          ))}
+        </div>
+      )}
+
       <div className="mt-5 flex flex-wrap items-center gap-2">
         <Btn variant="primary" onClick={onPrint}>
-          <Printer className="h-4 w-4" /> Print / PDF
+          <Printer className="h-4 w-4" /> {selectedCount > 1 ? 'Print this' : 'Print / PDF'}
         </Btn>
+        {selectedCount > 1 && (
+          <Btn variant="primary" onClick={onPrintAll}>
+            <Printer className="h-4 w-4" /> Print all {selectedCount}
+          </Btn>
+        )}
         <Btn disabled={!!busy} onClick={() => void run('xlsx', onXlsx)}>
           {busy === 'xlsx' ? (
             'Building…'

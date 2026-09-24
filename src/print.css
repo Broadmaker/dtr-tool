@@ -1,3 +1,6 @@
+/* Batch print container — hidden on screen */
+.print-batch { display: none !important; }
+
 /* Print: DTR only — single A4, full-bleed, no blanks */
 @media print {
   @page {
@@ -44,12 +47,36 @@
     padding: 0 !important;
     margin: 0 !important;
   }
-  .dtr-preview-card > div:not(.dtr-preview-wrap),
+  .dtr-preview-card > div:not(.dtr-preview-wrap):not(.print-batch),
   .dtr-preview-card > p {
     display: none !important;
   }
 
   .dtr-preview-wrap {
+    display: block !important;
+    background: #fff !important;
+    border: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+  }
+
+  /* Default single mode — hide batch container */
+  html:not([data-print='batch']) .print-batch {
+    display: none !important;
+  }
+  html[data-print='single'] .print-batch {
+    display: none !important;
+  }
+  html[data-print='single'] .dtr-preview-wrap {
+    display: block !important;
+  }
+
+  /* Batch mode — hide single wrap, show batch stack */
+  html[data-print='batch'] .dtr-preview-wrap {
+    display: none !important;
+  }
+  html[data-print='batch'] .print-batch {
     display: block !important;
     background: #fff !important;
     border: none !important;
@@ -73,5 +100,17 @@
     break-inside: avoid;
     page-break-after: avoid;
     page-break-inside: avoid;
+  }
+
+  /* Batch pages — each DTR gets its own printed page */
+  html[data-print='batch'] .print-batch .dtr-page {
+    break-after: page !important;
+    break-inside: avoid !important;
+    page-break-after: always !important;
+    page-break-inside: avoid !important;
+  }
+  html[data-print='batch'] .print-batch .dtr-page:last-child {
+    break-after: auto !important;
+    page-break-after: auto !important;
   }
 }

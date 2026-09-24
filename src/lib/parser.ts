@@ -19,6 +19,8 @@ export interface ParseResult {
   sheetName: string;
   warnings: string[];
   preview: SheetPreview;
+  /** Day-matrix files store day numbers; assumed period is needed to remap dates when user changes month/year */
+  matrixAssumed?: { month: number; year: number };
 }
 
 const nh = (h: unknown) => String(h ?? '').trim().toLowerCase().replace(/[_\s]+/g, ' ');
@@ -113,20 +115,38 @@ export async function parseBiometricFile(file: File, override?: ColumnMap): Prom
       if (Number.isInteger(n) && n >= 1 && n <= 31) days.push({ col, day: n });
     });
     if (!days.length) throw new Error('Need headers like Employee | Date | Time, or Employee | 1 | 2 | 3 …');
-    const now = new Date();
-    warnings.push(`Day-matrix detected — assumed ${now.getFullYear()}-${now.getMonth() + 1}. Fix month/year next.`);
+    // Prefer file modification date for assumed period, fallback to now
+    const fileDate = new Date(file.lastModified || Date.now());
+    const assumedMonth = fileDate.getMonth() + 1;
+    const assumedYear = fileDate.getFullYear();
+    const matrixAssumed = { month: assumedMonth, year: assumedYear };
+    // Try to infer from any parsable Date cells outside matrix (e.g. a "Date" column hidden)
+    // If none, we'll use file date and warn user that remapping is automatic
+    warnings.push(
+      `Day-matrix detected — assumed ${assumedYear}-${String(assumedMonth).padStart(2, '0')}. ` +
+        `Change Period below and dates will be remapped automatically.`
+    );
     rows.forEach((r, i) => {
       const emp = String(r[cE] ?? '').trim();
       if (!emp) return;
       for (const { col, day } of days) {
         const ts = cellTimes(r[col]);
         if (!ts.length) continue;
-        const date = toISODate(now.getFullYear(), now.getMonth() + 1, day);
+        const date = toISODate(assumedYear, assumedMonth, day);
         for (const t of assignFourSlots(ts)) {
           if (t) punches.push({ employee: emp, date, time: t, kind: null, sourceRow: i + 2 });
         }
       }
     });
+    if (!punches.length) throw new Error('No punches readable. Check Employee/Date/Time columns.');
+    return {
+      punches,
+      employees: normalizePunches(punches),
+      sheetName: preview.sheetName,
+      warnings,
+      preview,
+      matrixAssumed,
+    };
   } else {
     throw new Error('Need headers like Employee | Date | Time, or Employee | 1 | 2 | 3 …');
   }
@@ -142,4 +162,23 @@ export function guessPeriod(p: RawPunch[]) {
   if (!best) { const d = new Date(); return { month: d.getMonth() + 1, year: d.getFullYear() }; }
   const [y, m] = best.split('-').map(Number);
   return { month: m, year: y };
+}
+
+/** For day-matrix files: remap stored ISO dates from assumed period to target period by day-of-month */
+export function remapMatrixEmployees(
+  employees: EmployeeAttendance[],
+  assumed: { month: number; year: number },
+  target: { month: number; year: number }
+): EmployeeAttendance[] {
+  if (assumed.month === target.month && assumed.year === target.year) return employees;
+  return employees.map((e) => {
+    const newDays: EmployeeAttendance['days'] = {};
+    for (const [iso, entry] of Object.entries(e.days)) {
+      const day = Number(iso.slice(8, 10));
+      if (!Number.isFinite(day) || day < 1 || day > 31) continue;
+      const newIso = toISODate(target.year, target.month, day);
+      newDays[newIso] = entry;
+    }
+    return { ...e, days: newDays };
+  });
 }
