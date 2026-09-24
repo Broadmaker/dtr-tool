@@ -47,21 +47,41 @@ function medianTime(times: string[]): string {
 }
 
 export function computeTypicalTimes(days: ResolvedDay[], officialHours: string): TypicalTimes {
-  const fallback = parseOfficialHours(officialHours);
+  const official = parseOfficialHours(officialHours);
   const buckets: Record<keyof TypicalTimes, string[]> = { amIn: [], amOut: [], pmIn: [], pmOut: [] };
   for (const d of days) {
     if (d.kind === 'holiday' || d.kind === 'leave' || d.kind === 'weekend') continue;
-    // only use complete workdays as source of truth, else any filled slot
     if (d.entry.amIn) buckets.amIn.push(d.entry.amIn);
     if (d.entry.amOut) buckets.amOut.push(d.entry.amOut);
     if (d.entry.pmIn) buckets.pmIn.push(d.entry.pmIn);
     if (d.entry.pmOut) buckets.pmOut.push(d.entry.pmOut);
   }
+  // Prefer officialHours to avoid "late IN" and "12:00 pmOut" bugs; use median only if it is plausible
+  const med: TypicalTimes = {
+    amIn: medianTime(buckets.amIn),
+    amOut: medianTime(buckets.amOut),
+    pmIn: medianTime(buckets.pmIn),
+    pmOut: medianTime(buckets.pmOut),
+  };
+  const clampEarly = (medVal: string, officialVal: string, maxLateMin: number) => {
+    if (!medVal) return officialVal;
+    const m = toMinutes(medVal);
+    const o = toMinutes(officialVal);
+    // IN: don't allow median to be > official+maxLate (late IN)
+    return m <= o + maxLateMin ? medVal : officialVal;
+  };
+  const clampLate = (medVal: string, officialVal: string, maxEarlyMin: number) => {
+    if (!medVal) return officialVal;
+    const m = toMinutes(medVal);
+    const o = toMinutes(officialVal);
+    // pmOut: don't allow median to be early like 12:00 (afternoon departure must be > 1pm)
+    return m >= o - maxEarlyMin ? medVal : officialVal;
+  };
   return {
-    amIn: medianTime(buckets.amIn) || fallback.amIn,
-    amOut: medianTime(buckets.amOut) || fallback.amOut,
-    pmIn: medianTime(buckets.pmIn) || fallback.pmIn,
-    pmOut: medianTime(buckets.pmOut) || fallback.pmOut,
+    amIn: clampEarly(med.amIn, official.amIn, 30), // IN > official+30m is late -> use official
+    amOut: med.amOut || official.amOut, // noon departure can vary
+    pmIn: med.pmIn || official.pmIn,
+    pmOut: clampLate(med.pmOut, official.pmOut, 90), // pmOut earlier than 15:30 (17:00-90) likely wrong like 12:00 -> use official
   };
 }
 
@@ -96,10 +116,18 @@ export function buildFlashFillOverrides(
     const cur = d.entry;
     const seedBase = hashSeed(d.date + typical.amIn);
     // Per-day varied deltas so blanks don't look copy-pasted; keep am/pm order valid
-    const vAmIn = varied && !cur.amIn ? jitteredTime(typical.amIn, -10, 10, seedBase + 11) : (cur.amIn || typical.amIn);
-    const vAmOut = varied && !cur.amOut ? jitteredTime(typical.amOut, -8, 8, seedBase + 29) : (cur.amOut || typical.amOut);
-    const vPmIn = varied && !cur.pmIn ? jitteredTime(typical.pmIn, -7, 10, seedBase + 53) : (cur.pmIn || typical.pmIn);
-    const vPmOut = varied && !cur.pmOut ? jitteredTime(typical.pmOut, -10, 12, seedBase + 79) : (cur.pmOut || typical.pmOut);
+    let vAmIn = varied && !cur.amIn ? jitteredTime(typical.amIn, -7, 7, seedBase + 11) : (cur.amIn || typical.amIn);
+    let vAmOut = varied && !cur.amOut ? jitteredTime(typical.amOut, -6, 6, seedBase + 29) : (cur.amOut || typical.amOut);
+    let vPmIn = varied && !cur.pmIn ? jitteredTime(typical.pmIn, -5, 7, seedBase + 53) : (cur.pmIn || typical.pmIn);
+    let vPmOut = varied && !cur.pmOut ? jitteredTime(typical.pmOut, -7, 8, seedBase + 79) : (cur.pmOut || typical.pmOut);
+    // Guards: afternoon departure must be afternoon (>14:00), IN must not be late (>09:30)
+    if (toMinutes(vAmIn) > toMinutes('09:30')) vAmIn = jitteredTime(typical.amIn, -7, -1, seedBase + 11);
+    if (toMinutes(vPmOut) < toMinutes('15:30')) vPmOut = jitteredTime(typical.pmOut, -2, 8, seedBase + 79);
+    // Ensure lunch order: amOut < pmIn
+    if (toMinutes(vAmOut) >= toMinutes(vPmIn)) {
+      vAmOut = jitteredTime(typical.amOut, -8, -2, seedBase + 29);
+      vPmIn = jitteredTime(typical.pmIn, 2, 7, seedBase + 53);
+    }
     out[d.date] = {
       amIn: cur.amIn || vAmIn,
       amOut: cur.amOut || vAmOut,
