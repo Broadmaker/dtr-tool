@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { CalendarDays, CalendarOff, Leaf, Plus, Trash2, Users, X, Check } from 'lucide-react';
+import { CalendarDays, CalendarOff, Leaf, Plus, Trash2, Users, X, Check, Sparkles } from 'lucide-react';
 import type { HolidayEntry, LeaveEntry } from '../lib/types';
 import { prettyDate } from '../lib/dateUtils';
 import { Btn, Card, Field, SectionTitle, SelectInput, TextInput } from './ui';
+import { holidaysForMonth } from '../lib/phHolidays';
 
 const LEAVE_TYPES = [
   'Vacation Leave',
@@ -30,6 +31,8 @@ export default function HolidayLeaveStep({
   onLeaveAll,
   onDelLeaveAll,
   onSwitchEmp,
+  month,
+  year,
 }: {
   activeEmp: string;
   selectedCount: number;
@@ -44,6 +47,8 @@ export default function HolidayLeaveStep({
   onLeaveAll: (l: LeaveEntry) => void;
   onDelLeaveAll: (date: string) => void;
   onSwitchEmp: (name: string) => void;
+  month: number;
+  year: number;
 }) {
   const [hd, setHd] = useState('');
   const [hn, setHn] = useState('');
@@ -124,6 +129,25 @@ export default function HolidayLeaveStep({
               {selectedNames.length > 3 && <span className="text-slate-500">+{selectedNames.length - 3} more</span>}
             </span>
           </p>
+
+          {/* PH Holiday preset — one tap */}
+          {(() => {
+            const preset = holidaysForMonth(year, month);
+            const added = preset.filter((p) => !holidays.some((h) => h.date === p.date)).length;
+            const total = preset.length;
+            if (total === 0) return (
+              <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">No preset holidays for {year}-{String(month).padStart(2,'0')} — add manually.</p>
+            );
+            return (
+              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-900/30 dark:bg-amber-950/20">
+                <span className="text-xs font-medium text-amber-800 dark:text-amber-200">{total} PH holiday{total>1?'s':''} for {year}-{String(month).padStart(2,'0')}</span>
+                <span className="text-xs text-amber-700 dark:text-amber-300">· {added} new · {total-added} already added</span>
+                <Btn size="xs" variant="primary" disabled={added===0} onClick={() => preset.forEach((p) => { if (!holidays.some((h)=>h.date===p.date)) onHol(p); })} className="ml-auto">
+                  <Sparkles className="h-3 w-3" /> Load {added || total} preset
+                </Btn>
+              </div>
+            );
+          })()}
 
           <div className="grid gap-3">
             <Field label="Date">

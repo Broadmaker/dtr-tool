@@ -488,6 +488,7 @@ export default function App() {
                 activeEmp={activeEmp}
                 selectedCount={chosen.length}
                 selectedNames={chosen.map((c) => c.name)}
+                month={month} year={year}
                 holidays={holidays}
                 leaves={empLeaves}
                 allLeaves={leaves}
