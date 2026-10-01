@@ -140,6 +140,12 @@ export default function UploadStep({
               <li>
                 <span className="font-medium text-slate-900 dark:text-white">Wide:</span> Employee | 1 | 2 | 3 … (one cell per day)
               </li>
+              <li>
+                <span className="font-medium text-slate-900 dark:text-white">Extracted DTR:</span> Personnel Att. details Report blocks (Name + Date range + 1–31 day rows)
+              </li>
+              <li>
+                <span className="font-medium text-slate-900 dark:text-white">CSC Form 48:</span> Daily Time Record sheet (one employee per sheet, dd/ww + AM/PM In/Out)
+              </li>
               <li>Times like 07:32, 7:32 AM, 07:32:00 all work. Unlabeled files open the column mapper.</li>
             </ul>
           </details>

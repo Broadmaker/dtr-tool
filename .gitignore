@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Local sample templates (real school data — never commit)
+DTR_Excel_Templates/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

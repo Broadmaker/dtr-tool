@@ -44,7 +44,7 @@ export function normalizeTime(input: unknown): string {
     return '';
   }
   const s = String(input).trim();
-  if (!s || s === '--' || s === '—' || /^(rest|off|leave|holiday)$/i.test(s)) return '';
+  if (!s || s === '--' || s === '—' || /^(rest|off|leave|holiday|absence|absent)$/i.test(s)) return '';
   // Excel serial datetime as string, or Date object string
   const d = new Date(s);
   const timeMatch = s.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?\s*([APap][Mm])?/);
