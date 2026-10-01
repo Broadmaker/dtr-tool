@@ -49,6 +49,8 @@ export interface EmployeeInfo {
   office: string;
   /** e.g. "8:00AM–12:00NN & 1:00PM–5:00PM" printed on CSC form */
   officialHours: string;
+  /** Name printed above the "VERIFIED as to the prescribed office hours" line */
+  verifier: string;
 }
 
 export type DayKind =

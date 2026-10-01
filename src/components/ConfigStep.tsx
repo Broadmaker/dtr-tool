@@ -1,4 +1,4 @@
-import { Building2, Briefcase, CalendarDays, Clock, User, Users } from 'lucide-react';
+import { Building2, Briefcase, CalendarDays, Clock, ShieldCheck, User, Users } from 'lucide-react';
 import type { EmployeeInfo } from '../lib/types';
 import { Card, Field, SectionTitle, SelectInput, TextInput } from './ui';
 
@@ -175,6 +175,29 @@ export default function ConfigStep({
               )}
             </div>
             <p className="mt-3 text-xs text-sky-700 dark:text-sky-300">Tip: different positions? Select each person above, set theirs, or use “Apply to all” when most share one office.</p>
+          </div>
+
+          <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-3 dark:border-emerald-900/30 dark:bg-emerald-950/20">
+            <Field label="Verifier name" hint="printed above “VERIFIED as to the prescribed office hours”">
+              <div className="relative">
+                <ShieldCheck className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <TextInput
+                  className="pl-9 font-medium tracking-tight"
+                  value={info.verifier ?? ''}
+                  placeholder="e.g. MARIA SANTOS, Principal I"
+                  onChange={(e) => onInfo({ verifier: e.target.value })}
+                />
+              </div>
+            </Field>
+            {selectedCount > 1 && info.verifier ? (
+              <button type="button" onClick={() => onApplyFieldToAll('verifier', info.verifier)} className="mt-1.5 text-xs font-medium text-emerald-700 hover:text-emerald-900 dark:text-emerald-300 dark:hover:text-emerald-200">
+                → Apply “{info.verifier}” to all {selectedCount}
+              </button>
+            ) : (
+              <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
+                Usually one signatory for everyone — type once, then “Apply to all”.
+              </p>
+            )}
           </div>
         </div>
       </div>

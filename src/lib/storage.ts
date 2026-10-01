@@ -7,6 +7,7 @@ export interface Prefs {
   office: string;
   officialHours: string;
   fileBase: string;
+  verifier: string;
 }
 
 const DEFAULTS: Prefs = {
@@ -14,6 +15,7 @@ const DEFAULTS: Prefs = {
   office: '',
   officialHours: '8:00AM–12:00NN & 1:00PM–5:00PM',
   fileBase: 'DTR',
+  verifier: '',
 };
 
 export function loadPrefs(): Prefs {

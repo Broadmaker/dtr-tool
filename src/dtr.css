@@ -243,7 +243,17 @@
 
 .verification-line {
   border-top: 0.28mm solid #222;
-  margin-top: 5mm;
+  margin-top: 0.7mm;
+}
+
+.verifier-name {
+  display: block;
+  margin-top: 3.5mm;
+  min-height: 3.5mm;
+  font-size: 9.2px;
+  font-weight: 700;
+  text-transform: uppercase;
+  line-height: 1.1;
 }
 
 .dtr-page::after {

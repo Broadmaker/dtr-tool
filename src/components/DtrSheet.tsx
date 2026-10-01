@@ -1,3 +1,4 @@
+import { memo, useMemo } from 'react';
 import type { EmployeeInfo, HolidayEntry, LeaveEntry, ResolvedDay } from '../lib/types';
 import { monthName } from '../lib/dateUtils';
 import { totalUndertime, undertimeForDay } from '../lib/rules';
@@ -21,19 +22,20 @@ function DTRSection({
   year: number;
   days: ResolvedDay[];
 }) {
-  const capMonth = (() => {
+  const capMonth = useMemo(() => {
     const up = monthName(month);
     return up.charAt(0) + up.slice(1).toLowerCase();
-  })();
+  }, [month]);
   const official = info.officialHours || '08:00:00-12:00:00  13:00:00-17:00:00';
-  const total = totalUndertime(days);
+  const total = useMemo(() => totalUndertime(days), [days]);
+  const qrValue = useMemo(() => buildQRPayload(info, month, year, days), [info, month, year, days]);
 
   return (
     <section className="dtr">
       <div className="top-line">
         <span className="form-no">Civil Service Form No. 48</span>
         <QRCodeSVG
-          value={buildQRPayload(info, month, year, days)}
+          value={qrValue}
           size={128}
           level="M"
           marginSize={0}
@@ -158,13 +160,16 @@ function DTRSection({
         <strong>{info.name || ''}</strong>
         <div className="signature-line" />
         <em>VERIFIED as to the prescribed office hours</em>
+        <div className="verifier-name">{info.verifier || '\u00A0'}</div>
         <div className="verification-line" />
       </div>
     </section>
   );
 }
 
-export default function DtrSheet(props: {
+const MemoDTRSection = memo(DTRSection);
+
+function DtrSheet(props: {
   info: EmployeeInfo;
   month: number;
   year: number;
@@ -175,10 +180,12 @@ export default function DtrSheet(props: {
   // holidays/leaves already applied via resolved days
   return (
     <div className="dtr-page">
-      <DTRSection info={props.info} month={props.month} year={props.year} days={props.days} />
-      <DTRSection info={props.info} month={props.month} year={props.year} days={props.days} />
+      <MemoDTRSection info={props.info} month={props.month} year={props.year} days={props.days} />
+      <MemoDTRSection info={props.info} month={props.month} year={props.year} days={props.days} />
     </div>
   );
 }
+
+export default memo(DtrSheet);
 
 export { fmtTime };

@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react';
 import UploadStep from './components/UploadStep';
-import ColumnMappingStep from './components/ColumnMappingStep';
-import EmployeeStep from './components/EmployeeStep';
-import ConfigStep from './components/ConfigStep';
-import AttendanceStep from './components/AttendanceStep';
-import HolidayLeaveStep from './components/HolidayLeaveStep';
-import PreviewStep from './components/PreviewStep';
+const ColumnMappingStep = lazy(() => import('./components/ColumnMappingStep'));
+const EmployeeStep = lazy(() => import('./components/EmployeeStep'));
+const ConfigStep = lazy(() => import('./components/ConfigStep'));
+const AttendanceStep = lazy(() => import('./components/AttendanceStep'));
+const HolidayLeaveStep = lazy(() => import('./components/HolidayLeaveStep'));
+const PreviewStep = lazy(() => import('./components/PreviewStep'));
 import { Btn, Card } from './components/ui';
 import { Page, PrivacyStrip, Stepper, Toast, TopBar } from './components/shell';
 import {
@@ -34,6 +34,15 @@ import { buildFlashFillOverrides, computeTypicalTimes } from './lib/fill';
 
 type Step = 0 | 1 | 2 | 3 | 4 | 5;
 const STEP_LABELS = ['Upload', 'Employees', 'Period', 'Review', 'Holidays', 'Export'];
+
+function StepFallback() {
+  return (
+    <div className="rounded-2xl border border-slate-200/70 bg-white p-5 dark:border-slate-800 dark:bg-slate-900" role="status" aria-label="Loading step">
+      <div className="h-4 w-32 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+      <div className="mt-3 h-24 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
+    </div>
+  );
+}
 
 export default function App() {
   const [parsed, setParsed] = useState<ParseResult | null>(null);
@@ -205,12 +214,14 @@ export default function App() {
     flash(`Flash-filled ${count} day${count > 1 ? 's' : ''} for ${activeEmp.split(' ')[0]}`);
   }, [days, typical, typicalHint, activeEmp, merged, overrides, flash]);
   const activeStored = empInfos[activeEmp] ?? {};
-  const info: EmployeeInfo = {
+  const info: EmployeeInfo = useMemo(() => ({
     name: (activeStored.name ?? activeEmp).toUpperCase(),
     position: activeStored.position ?? prefs.position,
     office: activeStored.office ?? prefs.office,
     officialHours: activeStored.officialHours ?? prefs.officialHours,
-  };
+    verifier: activeStored.verifier ?? prefs.verifier ?? '',
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [empInfos, activeEmp, prefs.position, prefs.office, prefs.officialHours, prefs.verifier]);
 
   const toggle = useCallback((n: string) => setSelected((s) => {
     const c = new Set(s);
@@ -289,16 +300,23 @@ export default function App() {
   const patchEmpInfo = (name: string, patch: Partial<EmployeeInfo>) =>
     setEmpInfos((prev) => ({ ...prev, [name]: { ...(prev[name] ?? {}), ...patch } }));
 
-  const applyEmpFieldToAll = (field: keyof EmployeeInfo, value: string) =>
+  const applyEmpFieldToAll = (field: keyof EmployeeInfo, value: string) => {
     setEmpInfos((prev) => {
       const next: Record<string, Partial<EmployeeInfo>> = { ...prev };
       for (const n of selected) next[n] = { ...(next[n] ?? {}), [field]: value };
       return next;
     });
+    const label =
+      field === 'officialHours' ? 'Official hours' : field.charAt(0).toUpperCase() + field.slice(1);
+    flash(`Applied ${label} “${value}” to ${selected.size} employee${selected.size > 1 ? 's' : ''}.`);
+  };
 
-  const chosen = effectiveEmployees.filter((e) => selected.has(e.name)) ?? [];
+  const chosen = useMemo(
+    () => effectiveEmployees.filter((e) => selected.has(e.name)),
+    [effectiveEmployees, selected],
+  );
 
-  const bundles = (): ExportBundle[] =>
+  const bundles = useCallback((): ExportBundle[] =>
     chosen.map((e) => {
       const empMerged = { ...e.days, ...(effectiveOverrides[e.name] ?? {}) };
       const empLv = leaves[e.name] ?? [];
@@ -309,12 +327,16 @@ export default function App() {
           position: s.position ?? prefs.position,
           office: s.office ?? prefs.office,
           officialHours: s.officialHours ?? prefs.officialHours,
+          verifier: s.verifier ?? prefs.verifier ?? '',
         },
         month, year,
         days: resolveMonth(empMerged, month, year, holidays, empLv),
         holidays, leaves: empLv,
       };
-    });
+    }), [chosen, effectiveOverrides, leaves, empInfos, prefs, month, year, holidays]);
+
+  // Stable for preview memoization; export/print actions call bundles() fresh.
+  const bundleList = useMemo(() => bundles(), [bundles]);
 
   const stamp = `${monthName(month).toLowerCase()}_${year}`;
   const base = (prefs.fileBase || 'DTR').replace(/[\\/?*[\]:]/g, '_').slice(0, 40) || 'DTR';
@@ -374,11 +396,13 @@ export default function App() {
 
         {!parsed && !mapPreview && <UploadStep onParsed={onParsed} onNeedMap={needMapping} onSample={loadSample} />}
         {!parsed && mapPreview && mapFile && (
-          <ColumnMappingStep
-            preview={mapPreview} map={colMap} onChange={setColMap}
-            onBack={() => { setMapPreview(null); setMapFile(null); }}
-            onApply={applyMapping} busy={mapBusy} error={mapError}
-          />
+          <Suspense fallback={<StepFallback />}>
+            <ColumnMappingStep
+              preview={mapPreview} map={colMap} onChange={setColMap}
+              onBack={() => { setMapPreview(null); setMapFile(null); }}
+              onApply={applyMapping} busy={mapBusy} error={mapError}
+            />
+          </Suspense>
         )}
 
         {parsed && (
@@ -419,12 +443,15 @@ export default function App() {
             ))}
 
             {step === 1 && (
-              <EmployeeStep
-                list={effectiveEmployees} selected={selected} onToggle={toggle}
-                onAll={(v) => setSelected(new Set(v ? effectiveEmployees.map((e) => e.name) : []))}
-              />
+              <Suspense fallback={<StepFallback />}>
+                <EmployeeStep
+                  list={effectiveEmployees} selected={selected} onToggle={toggle}
+                  onAll={(v) => setSelected(new Set(v ? effectiveEmployees.map((e) => e.name) : []))}
+                />
+              </Suspense>
             )}
             {step === 2 && (
+              <Suspense fallback={<StepFallback />}>
               <ConfigStep
                 month={month} year={year}
                 info={info}
@@ -433,7 +460,7 @@ export default function App() {
                 selectedCount={chosen.length}
                 onMonth={setMonth} onYear={setYear}
                 onInfo={(p) => {
-                  // Name/position/office/hours are per-employee now; keep prefs as default for next time
+                  // Name/position/office/hours/verifier are per-employee now; keep prefs as default for next time
                   if (p.name !== undefined) patchEmpInfo(activeEmp, { name: p.name });
                   if (p.position !== undefined) {
                     patchEmpInfo(activeEmp, { position: p.position });
@@ -447,10 +474,15 @@ export default function App() {
                     patchEmpInfo(activeEmp, { officialHours: p.officialHours });
                     patchPrefs({ officialHours: p.officialHours });
                   }
+                  if (p.verifier !== undefined) {
+                    patchEmpInfo(activeEmp, { verifier: p.verifier });
+                    patchPrefs({ verifier: p.verifier });
+                  }
                 }}
                 onApplyFieldToAll={applyEmpFieldToAll}
                 onSwitchEmp={(name) => setActiveEmp(name)}
               />
+              </Suspense>
             )}
             {step === 3 && (
               <div className="space-y-4">
@@ -480,10 +512,13 @@ export default function App() {
                     </Btn>
                   </div>
                 </Card>
-                <AttendanceStep days={days} holidays={holidays} leaves={empLeaves} onEdit={edit} onHoliday={toggleHoliday} onLeave={toggleLeave} onClear={clearDay} onFlashFill={flashFill} typicalHint={typicalHint} />
+                <Suspense fallback={<StepFallback />}>
+                  <AttendanceStep days={days} holidays={holidays} leaves={empLeaves} onEdit={edit} onHoliday={toggleHoliday} onLeave={toggleLeave} onClear={clearDay} onFlashFill={flashFill} typicalHint={typicalHint} />
+                </Suspense>
               </div>
             )}
             {step === 4 && (
+              <Suspense fallback={<StepFallback />}>
               <HolidayLeaveStep
                 activeEmp={activeEmp}
                 selectedCount={chosen.length}
@@ -514,14 +549,17 @@ export default function App() {
                 })}
                 onSwitchEmp={(name) => setActiveEmp(name)}
               />
+              </Suspense>
             )}
             {step === 5 && (
+              <Suspense fallback={<StepFallback />}>
               <PreviewStep
                 info={info} month={month} year={year} days={days} holidays={holidays} leaves={empLeaves} issues={issues}
                 selectedCount={chosen.length} selectedNames={chosen.map((c) => c.name)} activeEmp={activeEmp}
                 fileBase={prefs.fileBase || 'DTR'} onFileBase={(v) => patchPrefs({ fileBase: v })}
-                onPrint={doPrintSingle} onPrintAll={doPrintBatch} onXlsx={doXlsx} onZip={doZip} bundles={bundles()} onSwitchEmp={(name) => setActiveEmp(name)}
+                onPrint={doPrintSingle} onPrintAll={doPrintBatch} onXlsx={doXlsx} onZip={doZip} bundles={bundleList} onSwitchEmp={(name) => setActiveEmp(name)}
               />
+              </Suspense>
             )}
 
             <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 pt-4 dark:border-slate-800">
