@@ -1,47 +1,13 @@
 import type { EmployeeInfo, HolidayEntry, LeaveEntry, ResolvedDay } from '../lib/types';
 import { monthName } from '../lib/dateUtils';
 import { totalUndertime, undertimeForDay } from '../lib/rules';
+import { QRCodeSVG } from 'qrcode.react';
+import { buildQRPayload } from '../lib/qr';
 
 function fmtTime(t: string): string {
   if (!t) return '';
   const [h, m] = t.split(':').map(Number);
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
-}
-
-function FakeQR() {
-  const cells = [
-    '111111100101101111111',
-    '100000101011001000001',
-    '101110100110101011101',
-    '101110101101101011101',
-    '101110100011001011101',
-    '100000101101101000001',
-    '111111101010101111111',
-    '000000001101100000000',
-    '110101111001011010101',
-    '001011001110100110010',
-    '101101110101011101101',
-    '011010001011110010110',
-    '110111101100101111001',
-    '000000001011001001010',
-    '111111101101111010101',
-    '100000100011001110010',
-    '101110101110101011101',
-    '101110100101101100110',
-    '101110101011001011101',
-    '100000101101101100010',
-    '111111101010101011111',
-  ];
-  return (
-    <svg className="qr" viewBox="0 0 21 21" aria-label="QR code placeholder">
-      <rect width="21" height="21" fill="#fff" />
-      {cells.map((row, y) =>
-        [...row].map((v, x) =>
-          v === '1' ? <rect key={`${x}-${y}`} x={x} y={y} width="1" height="1" fill="#000" /> : null
-        )
-      )}
-    </svg>
-  );
 }
 
 function DTRSection({
@@ -66,7 +32,16 @@ function DTRSection({
     <section className="dtr">
       <div className="top-line">
         <span className="form-no">Civil Service Form No. 48</span>
-        <FakeQR />
+        <QRCodeSVG
+          value={buildQRPayload(info, month, year, days)}
+          size={128}
+          level="M"
+          marginSize={0}
+          bgColor="#ffffff"
+          fgColor="#000000"
+          className="qr"
+          aria-label={`QR verification code for ${info.name || 'employee'}`}
+        />
       </div>
 
       <h1>DAILY TIME RECORD</h1>
