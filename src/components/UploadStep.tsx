@@ -146,6 +146,9 @@ export default function UploadStep({
               <li>
                 <span className="font-medium text-slate-900 dark:text-white">CSC Form 48:</span> Daily Time Record sheet (one employee per sheet, dd/ww + AM/PM In/Out)
               </li>
+              <li>
+                <span className="font-medium text-slate-900 dark:text-white">Record Report:</span> Segment IN/OUT blocks (one employee per sheet, Date Week + Segment 1/2, period from the Date header)
+              </li>
               <li>Times like 07:32, 7:32 AM, 07:32:00 all work. Unlabeled files open the column mapper.</li>
             </ul>
           </details>

@@ -123,6 +123,16 @@ function parseExtractedDTRGrid(
   grid: unknown[][],
   sheetName: string,
 ): Omit<ParseResult, 'preview'> | null {
+  // Not this layout: the Segment IN/OUT "Record Report" (Template 3) also has
+  // "Name" rows + numbered day rows, but its times need the two-block
+  // positional parser (parseSegmentRecordSheet). Bail early so its
+  // Work/EWork stat columns are never misread as PM times.
+  const topFlat = grid
+    .slice(0, 12)
+    .map((r) => (r ?? []).map((c) => String(c ?? '').trim().toLowerCase()).join(' | '))
+    .join('\n');
+  if (/segment/.test(topFlat) && (/date\s*week/.test(topFlat) || /record report/.test(topFlat))) return null;
+
   interface Block { name: string; year: number; month: number; days: Record<string, { amIn: string; amOut: string; pmIn: string; pmOut: string }> }
   const blocks: Block[] = [];
   let cur: Block | null = null;
@@ -357,6 +367,149 @@ function parseCSCForm48Sheet(
   return { name, year, month, days };
 }
 
+// ─── Template 3: Biometric "Record Report" with Segment IN/OUT ─────────────
+// One-employee-per-sheet layout ("Template Number 3 - Extracted DTR.xls"):
+//
+//   Civil Service Form No. 48 (missing on some sheets)
+//   Name | <EMPLOYEE> | .. | ID | .. | Shift | .. | Date | 2026-09
+//   Duty(D) / Work(H.M) / … summary rows
+//   Record Report
+//   Date Week | Segment 1   | Segment 2   | Segment 3   | Day Stat. | Date Week | Segment 1 …
+//             | IN  | OUT   | IN  | OUT   | IN  | OUT   | Work EWork|           | IN  | OUT …
+//   01 D2 | 07:00 | 12:00 | 12:58 | 17:00 |     |     | 08:00 |     | 17 D4 | 07:00 | …
+//   …left block days 01–16, right block days 17–30…
+//
+// Day cells look like "01 D2" (D0=Sun … D6=Sat). Times are positional:
+// Segment 1 IN/OUT = AM-IN/AM-OUT, Segment 2 IN/OUT = PM-IN/PM-OUT
+// (Segment 3 is always empty). Only the day number carries the date, so the
+// period comes from the "Date | 2026-09" header cell (else the file date) and
+// stays remappable via the Period step like Template 2.
+function parseSegmentRecordSheet(
+  grid: unknown[][],
+  opts: { fileName: string; fileDate: Date },
+): { name: string; year: number; month: number; days: Record<string, { amIn: string; amOut: string; pmIn: string; pmOut: string }> } | null {
+  const topRows = grid.slice(0, 12);
+  const flat = topRows
+    .map((r) => (r ?? []).map((c) => String(c ?? '').trim().toLowerCase()).join(' | '))
+    .join('\n');
+  const hasSegment = /segment/.test(flat);
+  const hasDateWeek = /date\s*week/.test(flat);
+  const hasRecord = /record report/.test(flat);
+  if (!((hasSegment && hasDateWeek) || (hasRecord && hasSegment))) return null;
+
+  // Header row holding the "Date Week" column labels; day rows start below it.
+  let headerRow = -1;
+  for (let i = 0; i < Math.min(grid.length, 12); i++) {
+    const r = grid[i] ?? [];
+    if (r.some((c) => String(c ?? '').trim().toLowerCase() === 'date week')) { headerRow = i; break; }
+  }
+  if (headerRow < 0) return null;
+
+  const cleanName = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim();
+  let name = '';
+  for (let i = 0; i < Math.min(grid.length, 8); i++) {
+    const r = grid[i] ?? [];
+    for (let c = 0; c < r.length; c++) {
+      if (String(r[c] ?? '').trim().toLowerCase().replace(/[:\s]+$/, '') === 'name') {
+        for (let k = c + 1; k < r.length; k++) {
+          if (cleanName(r[k])) { name = cleanName(r[k]); break; }
+        }
+        if (name) break;
+      }
+    }
+    if (name) break;
+  }
+  if (!name) {
+    const base = opts.fileName.replace(/\.[^.]+$/, '').trim();
+    name = base || 'Employee';
+  }
+
+  // Period: "Date" label cell (exact match so "Date Week" is skipped) in the
+  // header area; the value is usually "YYYY-MM" (e.g. 2026-09).
+  let year = 0, month = 0;
+  const periodFromText = (t: string): { year: number; month: number } | null => {
+    let m = t.match(/(\d{4})\s*[-/.]\s*(\d{1,2})/);
+    if (m) {
+      const mo = Number(m[2]);
+      if (mo >= 1 && mo <= 12) return { year: Number(m[1]), month: mo };
+    }
+    m = t.match(/(\d{1,2})\s*[-/]\s*(\d{4})/);
+    if (m) {
+      const mo = Number(m[1]);
+      if (mo >= 1 && mo <= 12) return { year: Number(m[2]), month: mo };
+    }
+    m = t.match(/(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+(\d{4})/i);
+    if (m) {
+      const MONTHS: Record<string, number> = {
+        january: 1, february: 2, march: 3, april: 4, may: 5, june: 6,
+        july: 7, august: 8, september: 9, october: 10, november: 11, december: 12,
+        jan: 1, feb: 2, mar: 3, apr: 4, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12,
+      };
+      const mo = MONTHS[m[1].toLowerCase()];
+      if (mo) return { year: Number(m[2]), month: mo };
+    }
+    return null;
+  };
+  outer: for (let i = 0; i < Math.min(grid.length, 8); i++) {
+    const r = grid[i] ?? [];
+    for (let c = 0; c < r.length; c++) {
+      if (String(r[c] ?? '').trim().toLowerCase().replace(/[:\s]+$/, '') !== 'date') continue;
+      for (let k = c + 1; k < r.length; k++) {
+        const v = r[k];
+        if (v instanceof Date && !Number.isNaN(v.getTime())) {
+          if (v.getFullYear() > 1900) { year = v.getFullYear(); month = v.getMonth() + 1; break outer; }
+          continue;
+        }
+        if (typeof v === 'number' && v > 20000 && v < 80000) {
+          const d = new Date(new Date(1899, 11, 30).getTime() + v * 86400000);
+          year = d.getFullYear(); month = d.getMonth() + 1; break outer;
+        }
+        const s = String(v ?? '').trim();
+        if (!s) continue;
+        const hit = periodFromText(s) ?? ({ year: 0, month: 0 } as { year: number; month: number });
+        if (hit.year && hit.month) { year = hit.year; month = hit.month; break outer; }
+        const iso = normalizeDate(s);
+        if (iso) { year = Number(iso.slice(0, 4)); month = Number(iso.slice(5, 7)); break outer; }
+        break;
+      }
+    }
+  }
+  if (!year || !month) {
+    year = opts.fileDate.getFullYear();
+    month = opts.fileDate.getMonth() + 1;
+  }
+
+  // Day rows: scan every cell for "DD" / "DD Dd" and read the 4 positional
+  // Segment times to its right. This picks up both the left (01–16) and the
+  // right (17–30) day blocks without hardcoding column offsets.
+  const days: Record<string, { amIn: string; amOut: string; pmIn: string; pmOut: string }> = {};
+  for (let i = headerRow + 1; i < grid.length; i++) {
+    const r = grid[i] ?? [];
+    for (let c = 0; c < r.length; c++) {
+      const dayM = String(r[c] ?? '').trim().match(/^(\d{1,2})(?:\s*D[0-6])?\s*$/i);
+      if (!dayM) continue;
+      const day = Number(dayM[1]);
+      if (!Number.isInteger(day) || day < 1 || day > 31) continue;
+      // The 4 cells to the right must be time-like or empty; otherwise this
+      // is a count row (e.g. Duty "0 | 26") rather than a day row.
+      const ahead = [r[c + 1], r[c + 2], r[c + 3], r[c + 4]];
+      const looksTimeLike = (v: unknown) => {
+        const s = String(v ?? '').trim();
+        return !s || cellTime(v) !== '' || /^(--)?$/.test(s);
+      };
+      if (!ahead.every(looksTimeLike)) continue;
+      const amIn = cellTime(r[c + 1]);
+      const amOut = cellTime(r[c + 2]);
+      const pmIn = cellTime(r[c + 3]);
+      const pmOut = cellTime(r[c + 4]);
+      if (!amIn && !amOut && !pmIn && !pmOut) continue;
+      days[toISODate(year, month, day)] = { amIn, amOut, pmIn, pmOut };
+    }
+  }
+  if (Object.keys(days).length < 1) return null;
+  return { name, year, month, days };
+}
+
 export async function parseBiometricFile(file: File, override?: ColumnMap): Promise<ParseResult> {
   // 1) Extracted-DTR block layout first ("Personnel Att. details Report",
   //    "Template Number 1 - Extracted DTR.xls"): repeating per-employee blocks
@@ -392,8 +545,67 @@ export async function parseBiometricFile(file: File, override?: ColumnMap): Prom
           return { ...hit, preview };
         }
       }
-      // 1b) Template 2 — CSC Form 48 Daily Time Record (one employee per sheet)
+      // 1b) Template 3 — Biometric "Record Report" with Segment IN/OUT
+      // (one employee per sheet, two day blocks per sheet, period in the
+      // "Date | 2026-09" header cell). Tried before Template 2; the layouts
+      // are mutually exclusive (Segment+Date Week vs Attendance Table).
       const fileDate = new Date(file.lastModified || Date.now());
+      const hits3: { sheet: string; parsed: NonNullable<ReturnType<typeof parseSegmentRecordSheet>> }[] = [];
+      for (const s of sheets) {
+        const p = parseSegmentRecordSheet(s.grid, { fileName: file.name, fileDate });
+        if (p) hits3.push({ sheet: s.name, parsed: p });
+      }
+      if (hits3.length) {
+        const seen = new Map<string, number>();
+        const employees: EmployeeAttendance[] = [];
+        const punches: RawPunch[] = [];
+        for (const { sheet, parsed } of hits3) {
+          let nm = parsed.name;
+          const n = (seen.get(nm) ?? 0) + 1;
+          seen.set(parsed.name, n);
+          if (n > 1) nm = `${parsed.name} (${sheet} ${n})`;
+          else if (hits3.length > 1 && (!parsed.name || parsed.name === file.name.replace(/\.[^.]+$/, ''))) nm = `${parsed.name} (${sheet})`;
+          const dayMap: EmployeeAttendance['days'] = {};
+          for (const iso of Object.keys(parsed.days).sort()) {
+            const d = parsed.days[iso];
+            dayMap[iso] = { ...d, corrected: false };
+            for (const t of [d.amIn, d.amOut, d.pmIn, d.pmOut]) {
+              if (t) punches.push({ employee: nm, date: iso, time: t, kind: null, sourceRow: 0 });
+            }
+          }
+          employees.push({ name: nm, days: dayMap });
+        }
+        employees.sort((a, b) => a.name.localeCompare(b.name));
+        const freq3 = new Map<string, number>();
+        for (const h of hits3) freq3.set(`${h.parsed.year}-${h.parsed.month}`, (freq3.get(`${h.parsed.year}-${h.parsed.month}`) ?? 0) + 1);
+        let best3 = '', bn3 = -1;
+        for (const [k, v] of freq3) if (v > bn3) { bn3 = v; best3 = k; }
+        const [ay3, am3] = best3.split('-').map(Number);
+        const rows3: unknown[][] = [];
+        for (const e of employees) {
+          for (const iso of Object.keys(e.days).sort()) {
+            const d = e.days[iso];
+            rows3.push([e.name, iso, d.amIn, d.amOut, d.pmIn, d.pmOut]);
+          }
+        }
+        return {
+          punches,
+          employees,
+          sheetName: hits3.length > 1 ? `${hits3.length} sheets` : hits3[0].sheet,
+          warnings: [
+            `Record Report (Segment IN/OUT) detected — ${employees.length} employee${employees.length > 1 ? 's' : ''} · ${ay3}-${String(am3).padStart(2, '0')} · times mapped as AM-IN / AM-OUT / PM-IN / PM-OUT. ` +
+              `Change Period below and dates will be remapped automatically.`,
+          ],
+          preview: {
+            sheetName: hits3.length > 1 ? `${hits3.length} sheets` : hits3[0].sheet,
+            headers: ['Employee', 'Date', 'AM-IN', 'AM-OUT', 'PM-IN', 'PM-OUT'],
+            rows: rows3,
+            totalRows: rows3.length,
+          },
+          matrixAssumed: { month: am3, year: ay3 },
+        };
+      }
+      // 1c) Template 2 — CSC Form 48 Daily Time Record (one employee per sheet)
       const hits2: { sheet: string; parsed: NonNullable<ReturnType<typeof parseCSCForm48Sheet>> }[] = [];
       for (const s of sheets) {
         const p = parseCSCForm48Sheet(s.grid, { fileName: file.name, fileDate });
