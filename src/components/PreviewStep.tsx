@@ -14,6 +14,7 @@ import {
 import type { EmployeeInfo, HolidayEntry, LeaveEntry, ResolvedDay, ValidationIssue } from '../lib/types';
 import type { ExportBundle } from '../lib/export';
 import DtrSheet from './DtrSheet';
+import PersonPills from './PersonPills';
 import { Btn, Card, SectionTitle } from './ui';
 
 export default function PreviewStep({
@@ -82,23 +83,7 @@ export default function PreviewStep({
           <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-slate-600 dark:text-slate-300">
             <Users className="h-3.5 w-3.5" /> Previewing
           </p>
-          <div className="flex flex-wrap gap-1.5">
-            {selectedNames.map((name) => (
-              <button
-                key={name}
-                type="button"
-                onClick={() => onSwitchEmp(name)}
-                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                  name === activeEmp
-                    ? 'border-slate-900 bg-slate-900 text-white shadow-sm dark:border-white dark:bg-white dark:text-slate-900'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:text-white'
-                }`}
-              >
-                {name}
-                {name === activeEmp && <span className="ml-1.5 opacity-70">• viewing</span>}
-              </button>
-            ))}
-          </div>
+          <PersonPills names={selectedNames} active={activeEmp} onSelect={onSwitchEmp} activeSuffix="• viewing" />
           <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">
             Showing <span className="font-semibold text-slate-900 dark:text-white">{activeEmp}</span> — {selectedCount - 1} other{selectedCount - 1 === 1 ? '' : 's'} will export too (Print all / Excel / ZIP)
           </p>

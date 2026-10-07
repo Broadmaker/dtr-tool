@@ -7,8 +7,8 @@
 
 export const SUPPORT = {
   // e.g. 'https://github.com/<you>/<repo>/issues' — bug reports / questions.
-  helpUrl: '',
+  helpUrl: 'https://github.com/Broadmaker/dtr-tool/issues',
   // e.g. 'https://ko-fi.com/<you>' or 'https://github.com/sponsors/<you>'.
-  // Leave empty until a public tip-jar exists; the UI then shows "coming soon".
-  donateUrl: '',
+  // Set to a public maintainer-owned tip page; the UI shows "coming soon" when empty.
+  donateUrl: 'https://ko-fi.com/broadmaker',
 } as const;

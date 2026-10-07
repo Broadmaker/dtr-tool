@@ -59,6 +59,14 @@ body::before {
 .dark * { scrollbar-color: #334155 transparent; }
 :focus-visible { outline: 2px solid var(--color-brand-500); outline-offset: 2px; }
 
+/* PersonPills search field: the focus halo lives on the pill itself
+   (rounded focus-within ring), so suppress the global rectangular
+   outline on the inner controls. Unlayered + higher specificity wins. */
+.person-search input:focus-visible,
+.person-search button:focus-visible {
+  outline: none;
+}
+
 /* utility: hairline card elevation */
 .card-elevated {
   box-shadow:

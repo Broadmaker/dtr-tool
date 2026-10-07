@@ -7,6 +7,7 @@ const AttendanceStep = lazy(() => import('./components/AttendanceStep'));
 const HolidayLeaveStep = lazy(() => import('./components/HolidayLeaveStep'));
 const PreviewStep = lazy(() => import('./components/PreviewStep'));
 import { Btn, Card } from './components/ui';
+import PersonPills from './components/PersonPills';
 import { Page, PrivacyStrip, Stepper, Toast, TopBar, Footer } from './components/shell';
 import {
   AlertTriangle,
@@ -23,6 +24,8 @@ import { resolveMonth, validateDays } from './lib/rules';
 import type { DayEntry, EmployeeInfo, LeaveEntry } from './lib/types';
 import type { ColumnMap, SheetPreview } from './lib/columns';
 import { unmapped } from './lib/columns';
+import type { MappingPreset } from './lib/presets';
+import { deletePreset, findPreset, loadPresets, presetFitsLayout, savePreset } from './lib/presets';
 import { downloadXlsx, downloadZip } from './lib/export';
 import type { ExportBundle } from './lib/export';
 import { makeSampleFile } from './lib/sample';
@@ -60,6 +63,7 @@ export default function App() {
   const [mapFile, setMapFile] = useState<File | null>(null);
   const [mapPreview, setMapPreview] = useState<SheetPreview | null>(null);
   const [colMap, setColMap] = useState<ColumnMap>(unmapped);
+  const [presets, setPresets] = useState<MappingPreset[]>(loadPresets);
   const [mapBusy, setMapBusy] = useState(false);
   const [mapError, setMapError] = useState('');
   const [toast, setToast] = useState('');
@@ -122,8 +126,21 @@ export default function App() {
   const needMapping = async (f: File, err: string) => {
     try {
       const preview = await readSheetGrid(f);
+      // Zero-click repeat: a saved preset matches this exact header layout.
+      const hit = findPreset(preview.headers);
+      if (hit && presetFitsLayout(hit, preview.headers.length)) {
+        try {
+          const r = await parseBiometricFile(f, hit.map);
+          onParsed(r, f);
+          flash(`Used saved mapping: ${hit.name}`);
+          return;
+        } catch {
+          // Stale preset (headers match but data doesn't parse) — fall through
+          // to manual mapping with the preset prefilled, never fail silently.
+        }
+      }
       const lowered = preview.headers.map((h) => h.toLowerCase().replace(/[_\s]+/g, ' '));
-      setColMap(autoMap(lowered));
+      setColMap(hit && presetFitsLayout(hit, preview.headers.length) ? hit.map : autoMap(lowered));
       setMapPreview(preview);
       setMapFile(f);
       setMapError(err);
@@ -142,6 +159,20 @@ export default function App() {
     } catch (e) {
       setMapError(e instanceof Error ? e.message : 'Mapping still produced no punches.');
     } finally { setMapBusy(false); }
+  };
+
+  const saveCurrentPreset = (name: string) => {
+    if (!mapPreview) return;
+    const clean = name.trim();
+    if (!clean) { flash('Name the preset first (e.g. “ZKTeco K14 — main office”).'); return; }
+    if (colMap.employee < 0) { flash('Map at least the employee column before saving.'); return; }
+    setPresets(savePreset(clean, mapPreview.headers, colMap));
+    flash(`Saved mapping: ${clean.trim().slice(0, 60)}`);
+  };
+
+  const removePreset = (fingerprint: string) => {
+    setPresets(deletePreset(fingerprint));
+    flash('Preset deleted.');
   };
 
   const loadSample = async () => {
@@ -401,6 +432,10 @@ export default function App() {
               preview={mapPreview} map={colMap} onChange={setColMap}
               onBack={() => { setMapPreview(null); setMapFile(null); }}
               onApply={applyMapping} busy={mapBusy} error={mapError}
+              presets={presets}
+              onSavePreset={saveCurrentPreset}
+              onApplyPreset={(p) => setColMap({ ...p.map })}
+              onDeletePreset={removePreset}
             />
           </Suspense>
         )}
@@ -494,19 +529,8 @@ export default function App() {
                       </span>
                       Reviewing
                     </h2>
-                    <div className="flex flex-wrap gap-1.5">
-                      {chosen.map((e) => (
-                        <button
-                          key={e.name}
-                          type="button"
-                          onClick={() => setActiveEmp(e.name)}
-                          className={`rounded-full border px-3 py-1 text-xs font-medium transition-all ${e.name === activeEmp ? 'border-slate-900 bg-slate-900 text-white shadow-sm dark:border-white dark:bg-white dark:text-slate-900' : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400'}`}
-                        >
-                          {e.name}
-                        </button>
-                      ))}
-                      {!chosen.length && <span className="text-xs text-slate-600 dark:text-slate-400">No one selected — go back to Employees.</span>}
-                    </div>
+                    <PersonPills names={chosen.map((c) => c.name)} active={activeEmp} onSelect={setActiveEmp} activeSuffix="" />
+                    {!chosen.length && <span className="text-xs text-slate-600 dark:text-slate-400">No one selected — go back to Employees.</span>}
                     <Btn size="sm" variant="ghost" disabled={!history.length && !hasUndoSnapshot} onClick={undo} className="ml-auto">
                       <Undo2 className="h-3.5 w-3.5" /> Undo
                     </Btn>

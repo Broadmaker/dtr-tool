@@ -3,6 +3,7 @@ import { CalendarDays, CalendarOff, Leaf, Plus, Trash2, Users, X, Check, Sparkle
 import type { HolidayEntry, LeaveEntry } from '../lib/types';
 import { prettyDate } from '../lib/dateUtils';
 import { Btn, Card, Field, SectionTitle, SelectInput, TextInput } from './ui';
+import PersonPills from './PersonPills';
 import { holidaysForMonth } from '../lib/phHolidays';
 
 const LEAVE_TYPES = [
@@ -78,23 +79,7 @@ export default function HolidayLeaveStep({
           <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-slate-600 dark:text-slate-300">
             <Users className="h-3.5 w-3.5" /> Editing for
           </p>
-          <div className="flex flex-wrap gap-1.5">
-            {selectedNames.map((name) => (
-              <button
-                key={name}
-                type="button"
-                onClick={() => onSwitchEmp(name)}
-                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                  name === activeEmp
-                    ? 'border-slate-900 bg-slate-900 text-white shadow-sm dark:border-white dark:bg-white dark:text-slate-900'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:text-white'
-                }`}
-              >
-                {name}
-                {name === activeEmp && <span className="ml-1.5 opacity-70">• active</span>}
-              </button>
-            ))}
-          </div>
+          <PersonPills names={selectedNames} active={activeEmp} onSelect={onSwitchEmp} />
           <p className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
             <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-200 dark:ring-amber-900/50">
               <CalendarOff className="h-3 w-3" /> Holidays = everyone
@@ -231,20 +216,26 @@ export default function HolidayLeaveStep({
 
           {/* Bulk toggle */}
           {selectedCount > 1 && (
-            <label className={`mb-3 flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-medium transition ${isBulk ? 'border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900' : 'border-slate-200 bg-white text-slate-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300'}`}>
-              <input
-                type="checkbox"
-                checked={applyToAll}
-                onChange={(e) => setApplyToAll(e.target.checked)}
-                className="sr-only"
-              />
-              <span className={`grid h-4 w-4 place-items-center rounded border ${isBulk ? 'border-white bg-white text-slate-900 dark:border-slate-900 dark:bg-slate-900 dark:text-white' : 'border-slate-300 bg-white dark:border-slate-500 dark:bg-slate-800'}`}>
+            <div
+              role="checkbox"
+              aria-checked={isBulk}
+              tabIndex={0}
+              onClick={() => setApplyToAll((v) => !v)}
+              onKeyDown={(ev) => {
+                if (ev.key === ' ' || ev.key === 'Enter') {
+                  ev.preventDefault();
+                  setApplyToAll((v) => !v);
+                }
+              }}
+              className={`mb-3 flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-medium transition ${isBulk ? 'border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900' : 'border-slate-200 bg-white text-slate-700 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-300'}`}
+            >
+              <span className={`grid h-4 w-4 place-items-center rounded border ${isBulk ? 'border-white bg-white text-slate-900 dark:border-slate-900 dark:bg-slate-900 dark:text-white' : 'border-slate-400 bg-slate-100 text-transparent dark:border-slate-500 dark:bg-slate-800'}`}>
                 {isBulk && <Check className="h-3 w-3" strokeWidth={3} />}
               </span>
               <Users className="h-3.5 w-3.5" />
               Apply to all {selectedCount} selected
               {isBulk && <span className="ml-auto text-[11px] opacity-80">bulk mode</span>}
-            </label>
+            </div>
           )}
 
           <div className="grid gap-3">

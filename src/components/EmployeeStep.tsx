@@ -58,13 +58,22 @@ export default function EmployeeStep({
               .join('')
               .toUpperCase();
             return (
-              <label
+              <div
                 key={e.name}
+                role="checkbox"
+                aria-checked={sel}
+                tabIndex={0}
+                onClick={() => onToggle(e.name)}
+                onKeyDown={(ev) => {
+                  if (ev.key === ' ' || ev.key === 'Enter') {
+                    ev.preventDefault();
+                    onToggle(e.name);
+                  }
+                }}
                 className={`flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors ${sel ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800'}`}
               >
-                <input type="checkbox" className="sr-only" checked={sel} onChange={() => onToggle(e.name)} />
                 <span
-                  className={`grid h-5 w-5 place-items-center rounded-md border text-white ${sel ? 'border-white bg-white text-slate-900 dark:border-slate-900 dark:bg-slate-900 dark:text-white' : 'border-slate-300 bg-white dark:border-slate-600 dark:bg-slate-800'}`}
+                  className={`grid h-5 w-5 place-items-center rounded-md border ${sel ? 'border-white bg-white text-slate-900 dark:border-slate-900 dark:bg-slate-900 dark:text-white' : 'border-slate-400 bg-slate-100 text-transparent dark:border-slate-500 dark:bg-slate-800'}`}
                 >
                   {sel && <Check className="h-3 w-3" strokeWidth={3} />}
                 </span>
@@ -77,7 +86,7 @@ export default function EmployeeStep({
                 <span className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${sel ? 'bg-white/20 text-white ring-white/30 dark:bg-slate-900/10 dark:text-slate-900 dark:ring-slate-900/20' : 'bg-slate-100 text-slate-700 ring-slate-200 dark:bg-slate-700 dark:text-slate-200 dark:ring-slate-600'}`}>
                   {Object.keys(e.days).length} days
                 </span>
-              </label>
+              </div>
             );
           })}
           {!shown.length && (

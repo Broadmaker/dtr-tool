@@ -7,7 +7,7 @@ Companion to `set-up.md` (the design brief) and `README.md` (current state).
 This file tracks **what to build next, in priority order**, with enough
 technical detail that either of us can pick an item up cold.
 
-Last updated: after the Tailwind/theme + quick-UX pass.
+Last updated: after saved importer presets + neutral footer/support dialog.
 
 ---
 
@@ -28,14 +28,17 @@ Last updated: after the Tailwind/theme + quick-UX pass.
 | ZIP export (1 `.xlsx` per employee) | ✅ done |
 | Light / Dark / System theme | ✅ done |
 | PWA install + offline | ✅ done |
-| **Batch print (all selected)** | ❌ **gap — item 1** |
+| **Batch print (all selected)** | ✅ done (`doPrintBatch` + `.print-batch` container in `print.css`) |
 | CSC form fidelity vs real office form | ⚠️ approximate — item 2 |
-| PH holiday preset | ❌ gap — item 3 |
-| Saved importer presets | ❌ gap — item 4 |
+| PH holiday preset | ✅ done (`phHolidays.ts` + one-tap load in `HolidayLeaveStep`) |
+| Saved importer presets | ✅ done (`presets.ts`, auto-apply in `needMapping`, save/apply/delete in `ColumnMappingStep`) |
 
 ---
 
-## 1. Batch print — print every selected employee in one job  ⭐ highest value
+## 1. Batch print — print every selected employee in one job  ✅ done
+
+> Shipped: `doPrintBatch()` in `App.tsx` + hidden `.print-batch` stack in
+> `PreviewStep` + batch rules in `print.css`. Notes below are kept as build history.
 
 **Problem.** Excel and ZIP already cover the whole batch, but Print only ever
 emits the single employee on screen. An AO preparing 47 DTRs must click
@@ -115,7 +118,11 @@ targets `.dtr-sheet` generically.
 
 ---
 
-## 3. PH holiday preset
+## 3. PH holiday preset  ✅ done
+
+> Shipped: `src/lib/phHolidays.ts` (`PH_HOLIDAYS` + `holidaysForMonth`) with a
+> one-tap **Load preset** button in `HolidayLeaveStep` (dedup by date, announces
+> when the year has no data). Notes below are kept as build history.
 
 **Problem.** Holidays are typed in one at a time, yet Philippine regular and
 special non-working days are identical for every school.
@@ -142,7 +149,14 @@ special non-working days are identical for every school.
 
 ---
 
-## 4. Saved importer presets (column mapping)
+## 4. Saved importer presets (column mapping)  ✅ done
+
+> Shipped: `src/lib/presets.ts` (ordered-header fingerprint + FNV-1a hash,
+> `localStorage` list, prefs only). `needMapping` in `App.tsx` auto-applies a
+> matching preset with a "Used saved mapping" toast and falls back to manual
+> mapping (prefilled) when parsing still fails. `ColumnMappingStep` has
+> "Save this mapping as…", an Apply list, and per-preset delete. Notes below
+> are kept as build history.
 
 **Problem.** `ColumnMappingStep` fixes a bad file, but the mapping is per-file.
 The next upload from the same biometric machine re-prompts.
@@ -224,9 +238,9 @@ native-command error. Check the log for `✓ built`. Raising
 
 ## Suggested order
 
-1. **Batch print** — closes the last real workflow gap, no external inputs needed.
-2. **PH holiday preset** — small, self-contained, saves typing every month.
-3. **Saved importer presets** — pays off on every repeat upload.
+1. ~~**Batch print**~~ ✅ done.
+2. ~~**PH holiday preset**~~ ✅ done.
+3. ~~**Saved importer presets**~~ ✅ done.
 4. **CSC fidelity** — highest impact overall, but blocked until the real blank
    form and a filled example are available.
 

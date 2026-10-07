@@ -1,6 +1,7 @@
 import { Building2, Briefcase, CalendarDays, Clock, ShieldCheck, User, Users } from 'lucide-react';
 import type { EmployeeInfo } from '../lib/types';
 import { Card, Field, SectionTitle, SelectInput, TextInput } from './ui';
+import PersonPills from './PersonPills';
 
 const MONTHS = [
   'January',
@@ -56,23 +57,7 @@ export default function ConfigStep({
           <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-widest text-slate-600 dark:text-slate-300">
             <Users className="h-3.5 w-3.5" /> Editing details for
           </p>
-          <div className="flex flex-wrap gap-1.5">
-            {selectedNames.map((name) => (
-              <button
-                key={name}
-                type="button"
-                onClick={() => onSwitchEmp(name)}
-                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-                  name === activeEmp
-                    ? 'border-slate-900 bg-slate-900 text-white shadow-sm dark:border-white dark:bg-white dark:text-slate-900'
-                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400 dark:hover:text-white'
-                }`}
-              >
-                {name}
-                {name === activeEmp && <span className="ml-1.5 opacity-70">• active</span>}
-              </button>
-            ))}
-          </div>
+          <PersonPills names={selectedNames} active={activeEmp} onSelect={onSwitchEmp} />
           <p className="mt-2 text-xs leading-relaxed text-slate-600 dark:text-slate-400">
             <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800 ring-1 ring-sky-200 dark:bg-sky-950/40 dark:text-sky-200 dark:ring-sky-900/50">
               <User className="h-3 w-3" /> Name = this person only
