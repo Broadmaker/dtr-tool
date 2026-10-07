@@ -3,6 +3,8 @@ import { AlertCircle, ArrowUpRight, FileSpreadsheet, Loader2, ShieldCheck, Spark
 import { parseBiometricFile } from '../lib/parser';
 import type { ParseResult } from '../lib/parser';
 import { Btn, Card, SectionTitle } from './ui';
+import SupportCard from './SupportCard';
+import RefreshHint from './RefreshHint';
 
 export default function UploadStep({
   onParsed,
@@ -45,7 +47,7 @@ export default function UploadStep({
   };
 
   return (
-    <div className="space-y-4">
+    <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
       <Card className="overflow-hidden !p-0">
         <div className="px-6 pt-6">
           <SectionTitle
@@ -160,6 +162,10 @@ export default function UploadStep({
           </details>
         </div>
       </Card>
+      <div className="space-y-4">
+        <SupportCard />
+        <RefreshHint />
+      </div>
     </div>
   );
 }

@@ -1,19 +1,15 @@
 // Shell — header, stepper, privacy, toast, page container.
-import { memo, useEffect, useState, type ReactNode } from 'react';
+import { memo, type ReactNode } from 'react';
 import {
   Check,
   Clock3,
+  Coffee,
   Download,
-  ExternalLink,
-  Heart,
   Laptop,
-  LifeBuoy,
-  MessageCircle,
   Moon,
   ShieldCheck,
   Sun,
   Trash2,
-  X,
 } from 'lucide-react';
 import { Btn } from './ui';
 import type { Theme } from '../lib/theme';
@@ -69,6 +65,19 @@ export const TopBar = memo(function TopBar({
               <Download className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Install</span>
             </Btn>
+          )}
+          {SUPPORT.donateUrl && (
+            <a
+              href={SUPPORT.donateUrl}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Buy me a coffee — support the project (optional)"
+              title="Buy me a coffee — optional support"
+              className="inline-flex h-8 items-center gap-1.5 rounded-full bg-amber-500 px-3 text-xs font-semibold text-white shadow-sm transition-all duration-150 hover:bg-amber-600 active:translate-y-px"
+            >
+              <Coffee className="h-3.5 w-3.5" aria-hidden />
+              <span className="hidden sm:inline">Support</span>
+            </a>
           )}
           <Btn size="sm" variant="ghost" onClick={onTheme} aria-label={`Theme ${THEME_META[theme].label}`}>
             <ThemeIcon className="h-3.5 w-3.5" />
@@ -232,112 +241,25 @@ export function Page({ children }: { children: ReactNode }) {
 }
 
 export const Footer = memo(function Footer() {
-  const [supportOpen, setSupportOpen] = useState(false);
-  useEffect(() => {
-    if (!supportOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSupportOpen(false);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [supportOpen]);
   return (
-    <>
-      <footer className="mx-auto w-full max-w-[1160px] px-4 pb-10 sm:px-5 print:hidden">
-        <div className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-5 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:text-left">
-          <div className="min-w-0 flex-1">
-            <p className="text-[13px] font-semibold tracking-tight text-slate-900 dark:text-white">DTR Tool · Privacy-first CSC Form 48 generator</p>
-            <p className="mt-1 max-w-[720px] text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-              Independent personal project for general productivity use. Not affiliated with, endorsed by,
-              or acting on behalf of DepEd or the Civil Service Commission. Data stays in your browser.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setSupportOpen(true)}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:text-white"
-          >
-            <LifeBuoy className="h-3.5 w-3.5" aria-hidden />
-            Support &amp; feedback
-          </button>
-        </div>
-      </footer>
-      {supportOpen && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Support and feedback"
-          onClick={() => setSupportOpen(false)}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-6 backdrop-blur-sm"
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="max-h-full w-[min(92vw,420px)] overflow-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
-          >
-            <div className="flex items-start gap-3">
-              <div className="min-w-0 flex-1">
-                <h2 className="text-sm font-semibold tracking-tight text-slate-900 dark:text-white">Support &amp; feedback</h2>
-                <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-                  Independent personal project. Not affiliated with DepEd or CSC.
-                </p>
-              </div>
-              <Btn size="sm" variant="ghost" onClick={() => setSupportOpen(false)} aria-label="Close support dialog">
-                <X className="h-3.5 w-3.5" />
-              </Btn>
-            </div>
-
-            <div className="mt-4 space-y-4">
-              <section>
-                <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-900 dark:text-white">
-                  <MessageCircle className="h-3.5 w-3.5" aria-hidden /> Help &amp; bug reports
-                </p>
-                <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-                  Questions, bugs, or biometric formats that don&apos;t parse — tell us so the tool can improve.
-                </p>
-                {SUPPORT.helpUrl ? (
-                  <a
-                    href={SUPPORT.helpUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:text-white"
-                  >
-                    Open feedback page <ExternalLink className="h-3 w-3" aria-hidden />
-                  </a>
-                ) : (
-                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                    Feedback link coming soon — see the README for how to reach the maintainer.
-                  </p>
-                )}
-              </section>
-
-              <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-700 dark:bg-slate-800/50">
-                <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-900 dark:text-white">
-                  <Heart className="h-3.5 w-3.5" aria-hidden /> Donations (optional)
-                </p>
-                <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
-                  The app is and stays free. Donations are voluntary, never required, and are not
-                  payment for any official service. They go to the maintainer as a private individual.
-                </p>
-                {SUPPORT.donateUrl ? (
-                  <a
-                    href={SUPPORT.donateUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
-                  >
-                    Donate <ExternalLink className="h-3 w-3" aria-hidden />
-                  </a>
-                ) : (
-                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                    Donation link coming soon — set <code className="rounded bg-slate-200/70 px-1 dark:bg-slate-700">SUPPORT.donateUrl</code> in{' '}
-                    <code className="rounded bg-slate-200/70 px-1 dark:bg-slate-700">src/lib/support.ts</code>.
-                  </p>
-                )}
-              </section>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
+    <footer className="mx-auto w-full max-w-[1160px] px-4 pb-10 sm:px-5 print:hidden">
+      <p className="text-center text-xs leading-relaxed text-slate-400 dark:text-slate-500">
+        <span className="font-semibold text-slate-500 dark:text-slate-400">DTR Tool</span>
+        {' · '}Privacy-first CSC Form 48 generator — independent personal project, not affiliated with DepEd or CSC.
+        {SUPPORT.helpUrl && (
+          <>
+            {' · '}
+            <a
+              href={SUPPORT.helpUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="underline decoration-slate-300 underline-offset-2 hover:text-slate-600 dark:decoration-slate-600 dark:hover:text-slate-300"
+            >
+              Feedback
+            </a>
+          </>
+        )}
+      </p>
+    </footer>
   );
 });

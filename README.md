@@ -8,12 +8,11 @@ Browser-first DTR preparation tool per `set-up.md`:
 
 ## Support & feedback
 
-In-app: footer → **Support & feedback** (help links + optional donations).
-Links live in `src/lib/support.ts` (`helpUrl`, `donateUrl`) — both empty by
-default and safe to ship that way. When you have public maintainer-owned
-channels (e.g. repo Issues page, Ko-fi / GitHub Sponsors), fill them in there.
-The app stays fully free either way: donations are voluntary, never required,
-and are not payment for any official service.
+A **Buy me a coffee** card (Ko-fi) sits beside the upload dropzone, with a
+quiet text link kept in the footer alongside the feedback link. Links live in
+`src/lib/support.ts` (`helpUrl`, `donateUrl`) — each block hides while its URL
+is empty. The app stays fully free either way: donations are voluntary, never
+required, and are not payment for any official service.
 
 > 📋 **Planning the next work?** See [`next-steps.md`](./next-steps.md) for the
 > prioritized backlog (batch print, CSC form fidelity, PH holiday preset,
