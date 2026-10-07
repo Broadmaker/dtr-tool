@@ -303,6 +303,15 @@ function parseCSCForm48Sheet(
   const periodFromText = (t: string): { year: number; month: number } | null => {
     let m = t.match(/(\d{4})\s*[-\/]\s*(\d{1,2})/);
     if (m) return { year: Number(m[1]), month: Number(m[2]) };
+    // Full "MM-DD-YYYY" range ("08-01-2026 ~08-31-2026", PH/US order).
+    // Must precede the MM-YYYY fallback so the DD part is never read as a month.
+    m = t.match(/(\d{1,2})\s*[-/]\s*(\d{1,2})\s*[-/]\s*(\d{4})/);
+    if (m) {
+      const a = Number(m[1]);
+      const b = Number(m[2]);
+      const mo = a <= 12 ? a : b;
+      if (mo >= 1 && mo <= 12) return { year: Number(m[3]), month: mo };
+    }
     m = t.match(/(\d{1,2})\s*[-\/]\s*(\d{4})/);
     if (m) return { year: Number(m[2]), month: Number(m[1]) };
     m = t.match(/(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+(\d{4})/i);
@@ -336,7 +345,21 @@ function parseCSCForm48Sheet(
   }
 
   const days: Record<string, { amIn: string; amOut: string; pmIn: string; pmOut: string }> = {};
-  for (let i = 0; i < grid.length; i++) {
+  // Day rows start below the In/Out sub-header (classic "dd/ww" and
+  // "Time Card / Before Noon" variants both have one). Summary rows above
+  // it (Absence/Leave counts, whose numeric cells would otherwise parse as
+  // a phantom "00:00" day) must never be scanned.
+  let dayStart = 0;
+  for (let i = 0; i < Math.min(grid.length, 16); i++) {
+    const r = grid[i] ?? [];
+    let io = 0;
+    for (let c = 1; c < Math.min(r.length, 12); c++) {
+      const s = String(r[c] ?? '').trim().toLowerCase();
+      if (s === 'in' || s === 'out') io++;
+    }
+    if (io >= 2) { dayStart = i + 1; break; }
+  }
+  for (let i = dayStart; i < grid.length; i++) {
     const r = grid[i] ?? [];
     const dayM = String(r[0] ?? '').trim().match(/^(\d{1,2})\b/);
     if (!dayM) continue;
@@ -433,6 +456,15 @@ function parseSegmentRecordSheet(
       const mo = Number(m[2]);
       if (mo >= 1 && mo <= 12) return { year: Number(m[1]), month: mo };
     }
+    // Full "MM-DD-YYYY" range ("08-01-2026 ~08-31-2026", PH/US order).
+    // Must precede the MM-YYYY fallback so the DD part is never read as a month.
+    m = t.match(/(\d{1,2})\s*[-/]\s*(\d{1,2})\s*[-/]\s*(\d{4})/);
+    if (m) {
+      const a = Number(m[1]);
+      const b = Number(m[2]);
+      const mo = a <= 12 ? a : b;
+      if (mo >= 1 && mo <= 12) return { year: Number(m[3]), month: mo };
+    }
     m = t.match(/(\d{1,2})\s*[-/]\s*(\d{4})/);
     if (m) {
       const mo = Number(m[1]);
@@ -510,6 +542,380 @@ function parseSegmentRecordSheet(
   return { name, year, month, days };
 }
 
+// ─── Template 4: "Attendance Report" with side-by-side employee blocks ─────
+// ("Template Number 4 - Extracted DTR.xls"): each sheet holds up to 3
+// employees side-by-side (sheet names like "1.2.3", "4.5.6"), each block ~15
+// columns wide:
+//
+//   Attendance Report
+//   Period : | … | 2024/05/01 ~ 05/31
+//   Department | … | Name | <EMPLOYEE>
+//   Date | 2024/05/01 ~ 05/31 | … | No | <n>
+//   AB | L | BT … Late … Early Leave …
+//   1. 07:30-12:00, 13:00-04:30 (schedule row)
+//   Attendance Table
+//   dd/ww | AM … | PM … | Over …
+//         | In | Out | In | Out
+//   01 We | 07:14 | 12:05 | 12:35 | 16:43
+//   …31 rows… ("Absence" or blank = no punches)
+//
+// Column geometry per block mirrors Template 2: dd/ww at (nameCol - 8),
+// AM-IN=+1, AM-OUT=+3, PM-IN=+6, PM-OUT=+8. Day cells have no month/year,
+// so the period comes from the "Period"/"Date" header cell (else file date)
+// and stays remappable via the Period step like Templates 2–3.
+function parseAttendanceReportSheet(
+  grid: unknown[][],
+  opts: { fileName: string; fileDate: Date },
+): { name: string; year: number; month: number; days: Record<string, { amIn: string; amOut: string; pmIn: string; pmOut: string }>; empty: boolean }[] | null {
+  const topFlat = grid
+    .slice(0, 12)
+    .map((r) => (r ?? []).map((c) => String(c ?? '').trim().toLowerCase()).join(' | '))
+    .join('\n');
+  const hasReport = /attendance report/.test(topFlat);
+  const hasTable = /attendance table/.test(topFlat);
+  if (!(hasReport && hasTable)) return null;
+  // Mutually exclusive with Template 2 (CSC Form 48 / Daily Time Record).
+  if (/civil service form/.test(topFlat) || /daily time record/.test(topFlat)) return null;
+
+  const cleanName = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim();
+
+  // One "Name" label per side-by-side block (row ~2, cols 8/23/38).
+  interface Block { nameCol: number; name: string }
+  const blocks: Block[] = [];
+  for (let i = 0; i < Math.min(grid.length, 10); i++) {
+    const r = grid[i] ?? [];
+    for (let c = 0; c < r.length; c++) {
+      if (String(r[c] ?? '').trim().toLowerCase().replace(/[:\s]+$/, '') !== 'name') continue;
+      let nm = '';
+      for (let k = c + 1; k < Math.min(r.length, c + 4); k++) {
+        if (cleanName(r[k])) { nm = cleanName(r[k]); break; }
+      }
+      // Skip the header echo ("Employee Name" style) — not a real block.
+      if (nm && !/employee/i.test(nm)) blocks.push({ nameCol: c + 1, name: nm });
+      else if (!nm) blocks.push({ nameCol: c + 1, name: '' });
+    }
+  }
+  if (!blocks.length) return null;
+  // Dedupe repeated scans of the same label cell across header rows.
+  const uniq = new Map<number, Block>();
+  for (const b of blocks) if (!uniq.has(b.nameCol)) uniq.set(b.nameCol, b);
+  const cols = [...uniq.values()].sort((a, b) => a.nameCol - b.nameCol);
+
+  // Period: "Period"/"Date" label cell in the header area; value is usually
+  // "YYYY/MM/DD ~ MM/DD" (e.g. 2024/05/01 ~ 05/31).
+  let year = 0, month = 0;
+  const periodFromText = (t: string): { year: number; month: number } | null => {
+    let m = t.match(/(\d{4})\s*[/.-]\s*(\d{1,2})/);
+    if (m) {
+      const mo = Number(m[2]);
+      if (mo >= 1 && mo <= 12) return { year: Number(m[1]), month: mo };
+    }
+    m = t.match(/(\d{1,2})\s*[/-]\s*(\d{4})/);
+    if (m) {
+      const mo = Number(m[1]);
+      if (mo >= 1 && mo <= 12) return { year: Number(m[2]), month: mo };
+    }
+    return null;
+  };
+  outer: for (let i = 0; i < Math.min(grid.length, 8); i++) {
+    const r = grid[i] ?? [];
+    for (let c = 0; c < r.length; c++) {
+      const label = String(r[c] ?? '').trim().toLowerCase().replace(/[:\s]+$/, '');
+      if (label !== 'period' && label !== 'date') continue;
+      for (let k = c + 1; k < Math.min(r.length, c + 5); k++) {
+        const v = r[k];
+        if (v instanceof Date && !Number.isNaN(v.getTime())) {
+          if (v.getFullYear() > 1900) { year = v.getFullYear(); month = v.getMonth() + 1; break outer; }
+          continue;
+        }
+        if (typeof v === 'number' && v > 20000 && v < 80000) {
+          const d = new Date(new Date(1899, 11, 30).getTime() + v * 86400000);
+          year = d.getFullYear(); month = d.getMonth() + 1; break outer;
+        }
+        const s = String(v ?? '').trim();
+        if (!s) continue;
+        const hit = periodFromText(s);
+        if (hit) { year = hit.year; month = hit.month; break outer; }
+        const iso = normalizeDate(s);
+        if (iso) { year = Number(iso.slice(0, 4)); month = Number(iso.slice(5, 7)); break outer; }
+        break;
+      }
+    }
+  }
+  void opts;
+  if (!year || !month) {
+    year = opts.fileDate.getFullYear();
+    month = opts.fileDate.getMonth() + 1;
+  }
+
+  const out: { name: string; year: number; month: number; days: Record<string, { amIn: string; amOut: string; pmIn: string; pmOut: string }>; empty: boolean }[] = [];
+  for (const b of cols) {
+    if (!b.name) continue;
+    // dd/ww column sits 8 left of the Name value cell; fall back to a local
+    // search in case of merged/shifted sheets.
+    let ddCol = b.nameCol - 8;
+    let headerRow = -1;
+    for (let i = 0; i < Math.min(grid.length, 14); i++) {
+      const r = grid[i] ?? [];
+      if (String(r[ddCol] ?? '').trim().toLowerCase() === 'dd/ww') { headerRow = i; break; }
+    }
+    if (headerRow < 0) {
+      for (let i = 0; i < Math.min(grid.length, 14); i++) {
+        const r = grid[i] ?? [];
+        for (let dc = Math.max(0, b.nameCol - 10); dc <= b.nameCol - 6; dc++) {
+          if (String(r[dc] ?? '').trim().toLowerCase() === 'dd/ww') { ddCol = dc; headerRow = i; break; }
+        }
+        if (headerRow >= 0) break;
+      }
+    }
+    if (headerRow < 0) continue;
+    const days: Record<string, { amIn: string; amOut: string; pmIn: string; pmOut: string }> = {};
+    for (let i = headerRow + 2; i < grid.length; i++) {
+      const r = grid[i] ?? [];
+      const dayM = String(r[ddCol] ?? '').trim().match(/^(\d{1,2})\b/);
+      if (!dayM) {
+        // Stop at the end of the 31-day block (blank trailing rows).
+        if (Object.keys(days).length >= 28 && !String(r[ddCol] ?? '').trim()) break;
+        continue;
+      }
+      const day = Number(dayM[1]);
+      if (!Number.isInteger(day) || day < 1 || day > 31) continue;
+      const amIn = cellTime(r[ddCol + 1]);
+      const amOut = cellTime(r[ddCol + 3]);
+      const pmIn = cellTime(r[ddCol + 6]);
+      const pmOut = cellTime(r[ddCol + 8]);
+      if (!amIn && !amOut && !pmIn && !pmOut) continue; // "Absence" / weekend
+      days[toISODate(year, month, day)] = { amIn, amOut, pmIn, pmOut };
+    }
+    // Keep named-but-empty employees (all Absence) so nobody disappears.
+    out.push({ name: b.name, year, month, days, empty: Object.keys(days).length === 0 });
+  }
+  if (!out.length) return null;
+  return out;
+}
+
+// ─── Template 5a: "Exception Stat." day-row log ────────────────────────────
+// ("Template Number 5 - Extracted DTR.xls"): one row per employee per day
+// with complete ISO dates — the most reliable source in this export:
+//
+//   Exception Statistic Report … | Stat.Date: | 2026-09-01 ~ 2026-09-10
+//   ID | Name | Department | Date | First time zone | … | Second time zone …
+//                            | On-duty | Off-duty | On-duty | Off-duty
+//   1 | jekyll | Company | 2026-09-02 | 07:46 | 12:00 | 12:43 | …
+type T5Day = { amIn: string; amOut: string; pmIn: string; pmOut: string };
+interface T5Employee { id: string; name: string; days: Record<string, T5Day> }
+
+function t5ZoneCols(grid: unknown[][], headerRow: number): { id: number; name: number; date: number; zones: number[] } | null {
+  const hr = grid[headerRow] ?? [];
+  let id = -1, name = -1, date = -1;
+  for (let c = 0; c < hr.length; c++) {
+    const s = String(hr[c] ?? '').trim().toLowerCase().replace(/[:\s]+$/, '');
+    if (s === 'id' && id < 0) id = c;
+    else if (s === 'name' && name < 0) name = c;
+    else if (s === 'date' && date < 0) date = c;
+  }
+  if (id < 0 || name < 0 || date < 0) return null;
+  // Zone labels sit on the next row ("On-duty | Off-duty | On-duty | Off-duty").
+  const zones: number[] = [];
+  for (let i = headerRow + 1; i < Math.min(grid.length, headerRow + 3); i++) {
+    const r = grid[i] ?? [];
+    for (let c = 0; c < r.length; c++) {
+      const s = String(r[c] ?? '').trim().toLowerCase();
+      if (/^(on|off)[\s-]*duty$/.test(s) && !zones.includes(c)) zones.push(c);
+    }
+    if (zones.length >= 4) break;
+  }
+  zones.sort((a, b) => a - b);
+  if (zones.length < 4) return null;
+  return { id, name, date, zones: zones.slice(0, 4) };
+}
+
+function parseExceptionStatSheet(
+  grid: unknown[][],
+  opts: { fileName: string; fileDate: Date },
+): { employees: T5Employee[]; year: number; month: number; source: string } | null {
+  const topFlat = grid
+    .slice(0, 8)
+    .map((r) => (r ?? []).map((c) => String(c ?? '').trim().toLowerCase()).join(' | '))
+    .join('\n');
+  if (!(/exception statistic/.test(topFlat) && /on[\s-]*duty/.test(topFlat))) return null;
+
+  let headerRow = -1;
+  for (let i = 0; i < Math.min(grid.length, 10); i++) {
+    const r = grid[i] ?? [];
+    if (String(r[0] ?? '').trim().toLowerCase() === 'id' && r.some((c) => String(c ?? '').trim().toLowerCase() === 'name')) {
+      headerRow = i;
+      break;
+    }
+  }
+  if (headerRow < 0) return null;
+  const cols = t5ZoneCols(grid, headerRow);
+  if (!cols) return null;
+
+  // Period from the "Stat.Date:" row; else dominant data month; else file date.
+  let year = 0, month = 0;
+  outer: for (let i = 0; i < Math.min(grid.length, 6); i++) {
+    const r = grid[i] ?? [];
+    for (let c = 0; c < r.length; c++) {
+      if (String(r[c] ?? '').trim().toLowerCase().replace(/[:\s]+$/, '') !== 'stat.date') continue;
+      for (let k = c + 1; k < r.length; k++) {
+        const s = String(r[k] ?? '').trim();
+        if (!s) continue;
+        let m = s.match(/(\d{4})\s*[-/.]\s*(\d{1,2})/);
+        if (m && Number(m[2]) >= 1 && Number(m[2]) <= 12) { year = Number(m[1]); month = Number(m[2]); break outer; }
+        const iso = normalizeDate(s);
+        if (iso) { year = Number(iso.slice(0, 4)); month = Number(iso.slice(5, 7)); break outer; }
+        break;
+      }
+    }
+  }
+
+  const byId = new Map<string, T5Employee>();
+  const order: string[] = [];
+  for (let i = headerRow + 2; i < grid.length; i++) {
+    const r = grid[i] ?? [];
+    const id = String(r[cols.id] ?? '').trim();
+    if (!/^\d+$/.test(id)) continue; // skips sub-headers / junk rows
+    const cleanName = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim();
+    const name = cleanName(r[cols.name]);
+    if (!name || /employee/i.test(name)) continue;
+    const iso = normalizeDate(r[cols.date]);
+    if (!iso) continue;
+    const [amIn, amOut, pmIn, pmOut] = [cols.zones[0], cols.zones[1], cols.zones[2], cols.zones[3]].map((c) => cellTime(r[c]));
+    let emp = byId.get(id);
+    if (!emp) {
+      emp = { id, name, days: {} };
+      byId.set(id, emp);
+      order.push(id);
+    }
+    if (amIn || amOut || pmIn || pmOut) emp.days[iso] = { amIn, amOut, pmIn, pmOut };
+  }
+  if (!order.length) return null;
+  const employees = order.map((id) => byId.get(id) as T5Employee);
+  if (!year || !month) {
+    const freq = new Map<string, number>();
+    for (const e of employees) {
+      for (const iso of Object.keys(e.days)) freq.set(iso.slice(0, 7), (freq.get(iso.slice(0, 7)) ?? 0) + 1);
+    }
+    let bk = '', bn = -1;
+    for (const [k, v] of freq) if (v > bn) { bn = v; bk = k; }
+    if (bk) {
+      year = Number(bk.slice(0, 4));
+      month = Number(bk.slice(5, 7));
+    } else {
+      year = opts.fileDate.getFullYear();
+      month = opts.fileDate.getMonth() + 1;
+    }
+  }
+  void opts.fileName;
+  return { employees, year, month, source: 'Exception Stat.' };
+}
+
+// ─── Template 5b: "Att.log report" concatenated-time day grid (fallback) ────
+// Same export as 5a, used when the Exception sheet is absent:
+//
+//   Attendance Record Report … | Att. Time | 2026-09-01 ~ 2026-09-10
+//   1 | 2 | 3 … 10 (day-number header)
+//   ID: | … | 1 | … | Name: | jekyll
+//   <one concatenated punch string per day column, e.g. "07:5512:1812:3116:59">
+function parseAttLogSheet(
+  grid: unknown[][],
+  opts: { fileName: string; fileDate: Date },
+): { employees: T5Employee[]; year: number; month: number; source: string } | null {
+  const topFlat = grid
+    .slice(0, 8)
+    .map((r) => (r ?? []).map((c) => String(c ?? '').trim().toLowerCase()).join(' | '))
+    .join('\n');
+  if (!/attendance record report/.test(topFlat)) return null;
+
+  // Day-number header row: several 1..31 cells across the first columns.
+  let dayRow = -1;
+  const dayCols = new Map<number, number>(); // day -> col
+  for (let i = 0; i < Math.min(grid.length, 10); i++) {
+    const r = grid[i] ?? [];
+    const found = new Map<number, number>();
+    for (let c = 0; c < Math.min(r.length, 33); c++) {
+      const s = String(r[c] ?? '').trim();
+      if (!/^\d{1,2}$/.test(s)) continue;
+      const d = Number(s);
+      if (d >= 1 && d <= 31 && !found.has(d)) found.set(d, c);
+    }
+    if (found.size >= 5) {
+      dayRow = i;
+      for (const [d, c] of found) dayCols.set(d, c);
+      break;
+    }
+  }
+  if (dayRow < 0 || !dayCols.size) return null;
+
+  // Period from the "Att. Time" row; else file date.
+  let year = 0, month = 0;
+  outer: for (let i = 0; i < Math.min(grid.length, 8); i++) {
+    const r = grid[i] ?? [];
+    for (let c = 0; c < r.length; c++) {
+      const label = String(r[c] ?? '').trim().toLowerCase().replace(/[:\s]+$/, '').replace(/\./g, '');
+      if (label !== 'att time' && label !== 'atttime') continue;
+      for (let k = c + 1; k < r.length; k++) {
+        const s = String(r[k] ?? '').trim();
+        if (!s) continue;
+        const m = s.match(/(\d{4})\s*[-/.]\s*(\d{1,2})/);
+        if (m && Number(m[2]) >= 1 && Number(m[2]) <= 12) { year = Number(m[1]); month = Number(m[2]); break outer; }
+        const iso = normalizeDate(s);
+        if (iso) { year = Number(iso.slice(0, 4)); month = Number(iso.slice(5, 7)); break outer; }
+        break;
+      }
+    }
+  }
+  if (!year || !month) {
+    year = opts.fileDate.getFullYear();
+    month = opts.fileDate.getMonth() + 1;
+  }
+
+  const cleanName = (v: unknown) => String(v ?? '').replace(/\s+/g, ' ').trim();
+  const employees: T5Employee[] = [];
+  for (let i = dayRow + 1; i < grid.length; i++) {
+    const r = grid[i] ?? [];
+    if (String(r[0] ?? '').trim().toLowerCase().replace(/[:\s]+$/, '') !== 'id') continue;
+    let id = '', name = '';
+    for (let c = 0; c < r.length; c++) {
+      if (String(r[c] ?? '').trim().toLowerCase().replace(/[:\s]+$/, '') === 'name') {
+        for (let k = c + 1; k < r.length; k++) {
+          if (cleanName(r[k])) { name = cleanName(r[k]); break; }
+        }
+        break;
+      }
+    }
+    if (!name || /employee/i.test(name)) continue;
+    for (let c = 1; c < Math.min(r.length, 4); c++) {
+      const v = String(r[c] ?? '').trim();
+      if (/^\d+$/.test(v)) { id = v; break; }
+    }
+    if (!id) id = name;
+    const times = grid[i + 1] ?? [];
+    const days: Record<string, T5Day> = {};
+    for (const [day, col] of [...dayCols.entries()].sort((a, b) => a[0] - b[0])) {
+      const raw = String(times[col] ?? '');
+      if (!raw.trim()) continue;
+      // Concatenated "HH:MM" runs ("07:5512:1812:3116:59"); strays like a
+      // trailing count digit carry no colon and are ignored by the pattern.
+      const toks = [...raw.matchAll(/(\d{1,2}:\d{2}(?::\d{2})?)/g)]
+        .map((m) => normalizeTime(m[1]))
+        .filter(Boolean);
+      if (!toks.length) continue;
+      // Machine repeats each punch (IN/OUT echo): collapse runs.
+      const uniq = toks.filter((t, ix) => ix === 0 || t !== toks[ix - 1]);
+      const [amIn, amOut, pmIn, pmOut] = assignFourSlots(uniq);
+      if (!amIn && !amOut && !pmIn && !pmOut) continue;
+      days[toISODate(year, month, day)] = { amIn, amOut, pmIn, pmOut };
+    }
+    // Keep named-but-empty employees so nobody disappears.
+    employees.push({ id, name, days });
+  }
+  if (!employees.length) return null;
+  void opts.fileName;
+  return { employees, year, month, source: 'Att.log report' };
+}
+
 export async function parseBiometricFile(file: File, override?: ColumnMap): Promise<ParseResult> {
   // 1) Extracted-DTR block layout first ("Personnel Att. details Report",
   //    "Template Number 1 - Extracted DTR.xls"): repeating per-employee blocks
@@ -559,6 +965,15 @@ export async function parseBiometricFile(file: File, override?: ColumnMap): Prom
         const seen = new Map<string, number>();
         const employees: EmployeeAttendance[] = [];
         const punches: RawPunch[] = [];
+        // Dominant period first: day cells carry no month/year, so every
+        // sheet is normalized to it by day number (same basis as the
+        // Period-step remap). Sheets stating a different month would
+        // otherwise vanish from the default view.
+        const freq3 = new Map<string, number>();
+        for (const h of hits3) freq3.set(`${h.parsed.year}-${h.parsed.month}`, (freq3.get(`${h.parsed.year}-${h.parsed.month}`) ?? 0) + 1);
+        let best3 = '', bn3 = -1;
+        for (const [k, v] of freq3) if (v > bn3) { bn3 = v; best3 = k; }
+        const [ay3, am3] = best3.split('-').map(Number);
         for (const { sheet, parsed } of hits3) {
           let nm = parsed.name;
           const n = (seen.get(nm) ?? 0) + 1;
@@ -568,19 +983,15 @@ export async function parseBiometricFile(file: File, override?: ColumnMap): Prom
           const dayMap: EmployeeAttendance['days'] = {};
           for (const iso of Object.keys(parsed.days).sort()) {
             const d = parsed.days[iso];
-            dayMap[iso] = { ...d, corrected: false };
+            const norm = toISODate(ay3, am3, Number(iso.slice(8, 10)));
+            dayMap[norm] = { ...d, corrected: false };
             for (const t of [d.amIn, d.amOut, d.pmIn, d.pmOut]) {
-              if (t) punches.push({ employee: nm, date: iso, time: t, kind: null, sourceRow: 0 });
+              if (t) punches.push({ employee: nm, date: norm, time: t, kind: null, sourceRow: 0 });
             }
           }
           employees.push({ name: nm, days: dayMap });
         }
         employees.sort((a, b) => a.name.localeCompare(b.name));
-        const freq3 = new Map<string, number>();
-        for (const h of hits3) freq3.set(`${h.parsed.year}-${h.parsed.month}`, (freq3.get(`${h.parsed.year}-${h.parsed.month}`) ?? 0) + 1);
-        let best3 = '', bn3 = -1;
-        for (const [k, v] of freq3) if (v > bn3) { bn3 = v; best3 = k; }
-        const [ay3, am3] = best3.split('-').map(Number);
         const rows3: unknown[][] = [];
         for (const e of employees) {
           for (const iso of Object.keys(e.days).sort()) {
@@ -605,7 +1016,144 @@ export async function parseBiometricFile(file: File, override?: ColumnMap): Prom
           matrixAssumed: { month: am3, year: ay3 },
         };
       }
-      // 1c) Template 2 — CSC Form 48 Daily Time Record (one employee per sheet)
+      // 1c) Template 4 — "Attendance Report" (up to 3 employees per sheet,
+      // side-by-side blocks, period in the "Period : | 2024/05/01 ~ 05/31"
+      // header cell). Mutually exclusive with Templates 2–3
+      // (Attendance Report vs Segment/Daily Time Record markers).
+      const hits4: { sheet: string; parsed: NonNullable<ReturnType<typeof parseAttendanceReportSheet>>[number] }[] = [];
+      for (const s of sheets) {
+        const ps = parseAttendanceReportSheet(s.grid, { fileName: file.name, fileDate });
+        if (ps) for (const p of ps) hits4.push({ sheet: s.name, parsed: p });
+      }
+      if (hits4.length) {
+        const seen = new Map<string, number>();
+        const employees: EmployeeAttendance[] = [];
+        const punches: RawPunch[] = [];
+        // Dominant period first: day cells carry no month/year, so every
+        // block is normalized to it by day number (same basis as the
+        // Period-step remap). Blocks stating a different month would
+        // otherwise vanish from the default view.
+        const freq4 = new Map<string, number>();
+        for (const h of hits4) freq4.set(`${h.parsed.year}-${h.parsed.month}`, (freq4.get(`${h.parsed.year}-${h.parsed.month}`) ?? 0) + 1);
+        let best4 = '', bn4 = -1;
+        for (const [k, v] of freq4) if (v > bn4) { bn4 = v; best4 = k; }
+        const [ay4, am4] = best4.split('-').map(Number);
+        for (const { sheet, parsed } of hits4) {
+          let nm = parsed.name;
+          const n = (seen.get(nm) ?? 0) + 1;
+          seen.set(parsed.name, n);
+          if (n > 1) nm = `${parsed.name} (${sheet} ${n})`;
+          else if (hits4.length > 1 && (!parsed.name || parsed.name === file.name.replace(/\.[^.]+$/, ''))) nm = `${parsed.name} (${sheet})`;
+          const dayMap: EmployeeAttendance['days'] = {};
+          for (const iso of Object.keys(parsed.days).sort()) {
+            const d = parsed.days[iso];
+            const norm = toISODate(ay4, am4, Number(iso.slice(8, 10)));
+            dayMap[norm] = { ...d, corrected: false };
+            for (const t of [d.amIn, d.amOut, d.pmIn, d.pmOut]) {
+              if (t) punches.push({ employee: nm, date: norm, time: t, kind: null, sourceRow: 0 });
+            }
+          }
+          employees.push({ name: nm, days: dayMap });
+        }
+        employees.sort((a, b) => a.name.localeCompare(b.name));
+        const rows4: unknown[][] = [];
+        for (const e of employees) {
+          for (const iso of Object.keys(e.days).sort()) {
+            const d = e.days[iso];
+            rows4.push([e.name, iso, d.amIn, d.amOut, d.pmIn, d.pmOut]);
+          }
+        }
+        const emptyCount4 = hits4.filter((h) => h.parsed.empty).length;
+        const sheetCount4 = new Set(hits4.map((h) => h.sheet)).size;
+        return {
+          punches,
+          employees,
+          sheetName: sheetCount4 > 1 ? `${sheetCount4} sheets` : hits4[0].sheet,
+          warnings: [
+            `Attendance Report detected — ${employees.length} employee${employees.length > 1 ? 's' : ''} · ${ay4}-${String(am4).padStart(2, '0')} · times mapped as AM-IN / AM-OUT / PM-IN / PM-OUT.` +
+              (emptyCount4 ? ` ${emptyCount4} employee${emptyCount4 > 1 ? 's' : ''} had no punches for this period (all Absence).` : '') +
+              ` Change Period below and dates will be remapped automatically.`,
+          ],
+          preview: {
+            sheetName: sheetCount4 > 1 ? `${sheetCount4} sheets` : hits4[0].sheet,
+            headers: ['Employee', 'Date', 'AM-IN', 'AM-OUT', 'PM-IN', 'PM-OUT'],
+            rows: rows4,
+            totalRows: rows4.length,
+          },
+          matrixAssumed: { month: am4, year: ay4 },
+        };
+      }
+      // 1d) Template 5 — attendance log export ("Exception Stat." day rows,
+      // fallback "Att.log report" concatenated-time grid). Markers
+      // ("Exception Statistic", "Attendance Record Report") collide with
+      // none of Templates 1–4. Dates here are complete ISO dates, so they
+      // are kept as-is; matrixAssumed still enables the Period-step remap.
+      const hits5: { sheet: string; parsed: { employees: T5Employee[]; year: number; month: number; source: string } }[] = [];
+      for (const s of sheets) {
+        const p5a = parseExceptionStatSheet(s.grid, { fileName: file.name, fileDate });
+        if (p5a) hits5.push({ sheet: s.name, parsed: p5a });
+      }
+      if (!hits5.length) {
+        for (const s of sheets) {
+          const p5b = parseAttLogSheet(s.grid, { fileName: file.name, fileDate });
+          if (p5b) hits5.push({ sheet: s.name, parsed: p5b });
+        }
+      }
+      if (hits5.length) {
+        const seen5 = new Map<string, number>();
+        const employees: EmployeeAttendance[] = [];
+        const punches: RawPunch[] = [];
+        for (const { sheet, parsed } of hits5) {
+          for (const emp of parsed.employees) {
+            let nm = emp.name;
+            const n = (seen5.get(nm) ?? 0) + 1;
+            seen5.set(emp.name, n);
+            if (n > 1) nm = `${emp.name} (#${emp.id} · ${sheet})`;
+            const dayMap: EmployeeAttendance['days'] = {};
+            for (const iso of Object.keys(emp.days).sort()) {
+              const d = emp.days[iso];
+              dayMap[iso] = { ...d, corrected: false };
+              for (const t of [d.amIn, d.amOut, d.pmIn, d.pmOut]) {
+                if (t) punches.push({ employee: nm, date: iso, time: t, kind: null, sourceRow: 0 });
+              }
+            }
+            employees.push({ name: nm, days: dayMap });
+          }
+        }
+        employees.sort((a, b) => a.name.localeCompare(b.name));
+        const freq5 = new Map<string, number>();
+        for (const h of hits5) freq5.set(`${h.parsed.year}-${h.parsed.month}`, (freq5.get(`${h.parsed.year}-${h.parsed.month}`) ?? 0) + 1);
+        let best5 = '', bn5 = -1;
+        for (const [k, v] of freq5) if (v > bn5) { bn5 = v; best5 = k; }
+        const [ay5, am5] = best5.split('-').map(Number);
+        const rows5: unknown[][] = [];
+        for (const e of employees) {
+          for (const iso of Object.keys(e.days).sort()) {
+            const d = e.days[iso];
+            rows5.push([e.name, iso, d.amIn, d.amOut, d.pmIn, d.pmOut]);
+          }
+        }
+        const emptyCount5 = employees.filter((e) => Object.keys(e.days).length === 0).length;
+        const src5 = hits5[0].parsed.source;
+        return {
+          punches,
+          employees,
+          sheetName: hits5.length > 1 ? `${hits5.length} sheets` : hits5[0].sheet,
+          warnings: [
+            `Attendance log (${src5}) detected — ${employees.length} employee${employees.length > 1 ? 's' : ''} · ${ay5}-${String(am5).padStart(2, '0')} · times mapped as AM-IN / AM-OUT / PM-IN / PM-OUT.` +
+              (emptyCount5 ? ` ${emptyCount5} employee${emptyCount5 > 1 ? 's' : ''} had no punches for this period.` : '') +
+              ` Change Period below and dates will be remapped automatically.`,
+          ],
+          preview: {
+            sheetName: hits5.length > 1 ? `${hits5.length} sheets` : hits5[0].sheet,
+            headers: ['Employee', 'Date', 'AM-IN', 'AM-OUT', 'PM-IN', 'PM-OUT'],
+            rows: rows5,
+            totalRows: rows5.length,
+          },
+          matrixAssumed: { month: am5, year: ay5 },
+        };
+      }
+      // 1e) Template 2 — CSC Form 48 Daily Time Record (one employee per sheet)
       const hits2: { sheet: string; parsed: NonNullable<ReturnType<typeof parseCSCForm48Sheet>> }[] = [];
       for (const s of sheets) {
         const p = parseCSCForm48Sheet(s.grid, { fileName: file.name, fileDate });
@@ -616,6 +1164,16 @@ export async function parseBiometricFile(file: File, override?: ColumnMap): Prom
         const seen = new Map<string, number>();
         const employees: EmployeeAttendance[] = [];
         const punches: RawPunch[] = [];
+        // Dominant period first: day cells carry no month/year, so every
+        // sheet is normalized to it by day number (same basis as the
+        // Period-step remap). Sheets stating a different month would
+        // otherwise vanish from the default view.
+        const freq = new Map<string, number>();
+        for (const h of hits2) freq.set(`${h.parsed.year}-${h.parsed.month}`, (freq.get(`${h.parsed.year}-${h.parsed.month}`) ?? 0) + 1);
+        let best = '', bn = -1;
+        for (const [k, v] of freq) if (v > bn) { bn = v; best = k; }
+        const [ay, am] = best.split('-').map(Number);
+        const matrixAssumed = { month: am, year: ay };
         for (const { sheet, parsed } of hits2) {
           let nm = parsed.name;
           const n = (seen.get(nm) ?? 0) + 1;
@@ -625,20 +1183,15 @@ export async function parseBiometricFile(file: File, override?: ColumnMap): Prom
           const dayMap: EmployeeAttendance['days'] = {};
           for (const iso of Object.keys(parsed.days).sort()) {
             const d = parsed.days[iso];
-            dayMap[iso] = { ...d, corrected: false };
+            const norm = toISODate(ay, am, Number(iso.slice(8, 10)));
+            dayMap[norm] = { ...d, corrected: false };
             for (const t of [d.amIn, d.amOut, d.pmIn, d.pmOut]) {
-              if (t) punches.push({ employee: nm, date: iso, time: t, kind: null, sourceRow: 0 });
+              if (t) punches.push({ employee: nm, date: norm, time: t, kind: null, sourceRow: 0 });
             }
           }
           employees.push({ name: nm, days: dayMap });
         }
         employees.sort((a, b) => a.name.localeCompare(b.name));
-        const freq = new Map<string, number>();
-        for (const h of hits2) freq.set(`${h.parsed.year}-${h.parsed.month}`, (freq.get(`${h.parsed.year}-${h.parsed.month}`) ?? 0) + 1);
-        let best = '', bn = -1;
-        for (const [k, v] of freq) if (v > bn) { bn = v; best = k; }
-        const [ay, am] = best.split('-').map(Number);
-        const matrixAssumed = { month: am, year: ay };
         const rows: unknown[][] = [];
         for (const e of employees) {
           for (const iso of Object.keys(e.days).sort()) {

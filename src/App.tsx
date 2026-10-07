@@ -7,7 +7,7 @@ const AttendanceStep = lazy(() => import('./components/AttendanceStep'));
 const HolidayLeaveStep = lazy(() => import('./components/HolidayLeaveStep'));
 const PreviewStep = lazy(() => import('./components/PreviewStep'));
 import { Btn, Card } from './components/ui';
-import { Page, PrivacyStrip, Stepper, Toast, TopBar } from './components/shell';
+import { Page, PrivacyStrip, Stepper, Toast, TopBar, Footer } from './components/shell';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -589,6 +589,7 @@ export default function App() {
           </p>
         )}
       </Page>
+      <Footer />
       <Toast msg={toast} />
     </>
   );

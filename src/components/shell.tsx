@@ -1,17 +1,23 @@
 // Shell — header, stepper, privacy, toast, page container.
-import { memo, type ReactNode } from 'react';
+import { memo, useEffect, useState, type ReactNode } from 'react';
 import {
   Check,
   Clock3,
   Download,
+  ExternalLink,
+  Heart,
   Laptop,
+  LifeBuoy,
+  MessageCircle,
   Moon,
   ShieldCheck,
   Sun,
   Trash2,
+  X,
 } from 'lucide-react';
 import { Btn } from './ui';
 import type { Theme } from '../lib/theme';
+import { SUPPORT } from '../lib/support';
 
 const THEME_META: Record<Theme, { icon: typeof Sun; label: string }> = {
   light: { icon: Sun, label: 'Light' },
@@ -46,13 +52,8 @@ export const TopBar = memo(function TopBar({
             <Clock3 className="h-4 w-4" strokeWidth={2.2} />
           </span>
           <div className="min-w-0 leading-none">
-            <div className="flex items-baseline gap-2">
-              <h1 className="text-[14px] font-semibold tracking-tight">DTR Tool</h1>
-              <span className="hidden rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-widest text-slate-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300 sm:inline">
-                DepEd
-              </span>
-            </div>
-            <p className="hidden text-xs text-slate-500 dark:text-slate-400 sm:block">Privacy-first DTR generator</p>
+            <h1 className="text-[14px] font-semibold tracking-tight">DTR Tool</h1>
+            <p className="hidden text-xs text-slate-500 dark:text-slate-400 sm:block">Privacy-first CSC DTR generator</p>
           </div>
         </div>
 
@@ -229,3 +230,114 @@ export const Toast = memo(function Toast({ msg }: { msg: string }) {
 export function Page({ children }: { children: ReactNode }) {
   return <div className="page mx-auto flex w-full max-w-[1160px] flex-col gap-5 px-4 pb-16 pt-6 sm:px-5 sm:pt-8">{children}</div>;
 }
+
+export const Footer = memo(function Footer() {
+  const [supportOpen, setSupportOpen] = useState(false);
+  useEffect(() => {
+    if (!supportOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSupportOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [supportOpen]);
+  return (
+    <>
+      <footer className="mx-auto w-full max-w-[1160px] px-4 pb-10 sm:px-5 print:hidden">
+        <div className="flex flex-col items-center gap-2 rounded-2xl border border-slate-200 bg-white px-5 py-5 text-center shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:flex-row sm:text-left">
+          <div className="min-w-0 flex-1">
+            <p className="text-[13px] font-semibold tracking-tight text-slate-900 dark:text-white">DTR Tool · Privacy-first CSC Form 48 generator</p>
+            <p className="mt-1 max-w-[720px] text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+              Independent personal project for general productivity use. Not affiliated with, endorsed by,
+              or acting on behalf of DepEd or the Civil Service Commission. Data stays in your browser.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSupportOpen(true)}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-600 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:text-white"
+          >
+            <LifeBuoy className="h-3.5 w-3.5" aria-hidden />
+            Support &amp; feedback
+          </button>
+        </div>
+      </footer>
+      {supportOpen && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Support and feedback"
+          onClick={() => setSupportOpen(false)}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-6 backdrop-blur-sm"
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className="max-h-full w-[min(92vw,420px)] overflow-auto rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+          >
+            <div className="flex items-start gap-3">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-sm font-semibold tracking-tight text-slate-900 dark:text-white">Support &amp; feedback</h2>
+                <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                  Independent personal project. Not affiliated with DepEd or CSC.
+                </p>
+              </div>
+              <Btn size="sm" variant="ghost" onClick={() => setSupportOpen(false)} aria-label="Close support dialog">
+                <X className="h-3.5 w-3.5" />
+              </Btn>
+            </div>
+
+            <div className="mt-4 space-y-4">
+              <section>
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-900 dark:text-white">
+                  <MessageCircle className="h-3.5 w-3.5" aria-hidden /> Help &amp; bug reports
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                  Questions, bugs, or biometric formats that don&apos;t parse — tell us so the tool can improve.
+                </p>
+                {SUPPORT.helpUrl ? (
+                  <a
+                    href={SUPPORT.helpUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:text-white"
+                  >
+                    Open feedback page <ExternalLink className="h-3 w-3" aria-hidden />
+                  </a>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                    Feedback link coming soon — see the README for how to reach the maintainer.
+                  </p>
+                )}
+              </section>
+
+              <section className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-700 dark:bg-slate-800/50">
+                <p className="flex items-center gap-1.5 text-xs font-semibold text-slate-900 dark:text-white">
+                  <Heart className="h-3.5 w-3.5" aria-hidden /> Donations (optional)
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                  The app is and stays free. Donations are voluntary, never required, and are not
+                  payment for any official service. They go to the maintainer as a private individual.
+                </p>
+                {SUPPORT.donateUrl ? (
+                  <a
+                    href={SUPPORT.donateUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-slate-900 px-3 py-1.5 text-xs font-medium text-white shadow-sm transition hover:bg-slate-700 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200"
+                  >
+                    Donate <ExternalLink className="h-3 w-3" aria-hidden />
+                  </a>
+                ) : (
+                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                    Donation link coming soon — set <code className="rounded bg-slate-200/70 px-1 dark:bg-slate-700">SUPPORT.donateUrl</code> in{' '}
+                    <code className="rounded bg-slate-200/70 px-1 dark:bg-slate-700">src/lib/support.ts</code>.
+                  </p>
+                )}
+              </section>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+});

@@ -144,10 +144,16 @@ export default function UploadStep({
                 <span className="font-medium text-slate-900 dark:text-white">Extracted DTR:</span> Personnel Att. details Report blocks (Name + Date range + 1–31 day rows)
               </li>
               <li>
-                <span className="font-medium text-slate-900 dark:text-white">CSC Form 48:</span> Daily Time Record sheet (one employee per sheet, dd/ww + AM/PM In/Out)
+                <span className="font-medium text-slate-900 dark:text-white">CSC Form 48:</span> Daily Time Record / Time Card sheet (one employee per sheet, date + AM/PM or Before/After-Noon In/Out)
               </li>
               <li>
                 <span className="font-medium text-slate-900 dark:text-white">Record Report:</span> Segment IN/OUT blocks (one employee per sheet, Date Week + Segment 1/2, period from the Date header)
+              </li>
+              <li>
+                <span className="font-medium text-slate-900 dark:text-white">Attendance Report:</span> side-by-side blocks (up to 3 employees per sheet, dd/ww + AM/PM In/Out, period from the Period header)
+              </li>
+              <li>
+                <span className="font-medium text-slate-900 dark:text-white">Attendance log:</span> Exception Stat. day rows (ID | Name | Date | On/Off-duty ×2), or the Att.log day-grid with concatenated times
               </li>
               <li>Times like 07:32, 7:32 AM, 07:32:00 all work. Unlabeled files open the column mapper.</li>
             </ul>

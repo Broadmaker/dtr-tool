@@ -12,7 +12,7 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'DTR Tool — DepEd Privacy-First DTR Generator',
+        name: 'DTR Tool — Privacy-First CSC DTR Generator',
         short_name: 'DTR Tool',
         description: 'Turn biometric exports into CSC-ready DTRs. 100% in-browser — no upload, no database.',
         theme_color: '#1748b5',
@@ -24,7 +24,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg}'],
+        globPatterns: ['**/*.{js,css,html,svg,jpg}'],
         maximumFileSizeToCacheInBytes: 6 * 1024 * 1024,
       },
     }),

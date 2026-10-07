@@ -1,7 +1,19 @@
-# DTR Tool — DepEd Privacy-First DTR Generator
+# DTR Tool — Privacy-First CSC DTR Generator
+
+> Independent personal project for general productivity use. Not affiliated with,
+> endorsed by, or acting on behalf of DepEd or the Civil Service Commission.
 
 Browser-first DTR preparation tool per `set-up.md`:
 **Upload Biometric Excel → Parse → Configure → CSC DTR Preview → Print/PDF → discard data.**
+
+## Support & feedback
+
+In-app: footer → **Support & feedback** (help links + optional donations).
+Links live in `src/lib/support.ts` (`helpUrl`, `donateUrl`) — both empty by
+default and safe to ship that way. When you have public maintainer-owned
+channels (e.g. repo Issues page, Ko-fi / GitHub Sponsors), fill them in there.
+The app stays fully free either way: donations are voluntary, never required,
+and are not payment for any official service.
 
 > 📋 **Planning the next work?** See [`next-steps.md`](./next-steps.md) for the
 > prioritized backlog (batch print, CSC form fidelity, PH holiday preset,

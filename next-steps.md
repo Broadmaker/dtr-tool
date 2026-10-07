@@ -1,5 +1,8 @@
 # DTR Tool — Next Steps
 
+> Independent personal project. Not affiliated with, endorsed by, or acting on
+> behalf of DepEd or the Civil Service Commission.
+
 Companion to `set-up.md` (the design brief) and `README.md` (current state).
 This file tracks **what to build next, in priority order**, with enough
 technical detail that either of us can pick an item up cold.
@@ -26,7 +29,7 @@ Last updated: after the Tailwind/theme + quick-UX pass.
 | Light / Dark / System theme | ✅ done |
 | PWA install + offline | ✅ done |
 | **Batch print (all selected)** | ❌ **gap — item 1** |
-| CSC form fidelity vs real DepEd form | ⚠️ approximate — item 2 |
+| CSC form fidelity vs real office form | ⚠️ approximate — item 2 |
 | PH holiday preset | ❌ gap — item 3 |
 | Saved importer presets | ❌ gap — item 4 |
 
@@ -89,7 +92,7 @@ If several `.dtr-sheet` elements were mounted at once they would all be
 
 ---
 
-## 2. CSC form fidelity — match the real DepEd DTR  ⭐ blocked on inputs
+## 2. CSC form fidelity — match the real office DTR  ⭐ blocked on inputs
 
 `DtrSheet.tsx` + `dtr.css` are a faithful *approximation*, not a replica.
 Printing is only useful if the output is accepted by the office.
@@ -202,7 +205,7 @@ The next upload from the same biometric machine re-prompts.
 ## Dev workflow
 
 ```powershell
-cd C:\Users\Mark\Desktop\DTR-Tool
+cd <path-to>/DTR-Tool
 Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 pnpm dev      # dev server
 pnpm build    # tsc -b && vite build → dist/
