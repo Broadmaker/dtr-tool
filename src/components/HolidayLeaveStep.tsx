@@ -4,7 +4,8 @@ import type { HolidayEntry, LeaveEntry } from '../lib/types';
 import { prettyDate } from '../lib/dateUtils';
 import { Btn, Card, Field, SectionTitle, SelectInput, TextInput } from './ui';
 import PersonPills from './PersonPills';
-import { holidaysForMonth } from '../lib/phHolidays';
+import { holidaysForMonth, parseHolidayCsv } from '../lib/phHolidays';
+import ConfirmDialog from './ConfirmDialog';
 
 const LEAVE_TYPES = [
   'Vacation Leave',
@@ -57,6 +58,8 @@ export default function HolidayLeaveStep({
   const [ld, setLd] = useState('');
   const [lt, setLt] = useState(LEAVE_TYPES[0]);
   const [applyToAll, setApplyToAll] = useState(false);
+  const [confirmCopy, setConfirmCopy] = useState(false);
+  const [csvMsg, setCsvMsg] = useState('');
   const isBulk = applyToAll && selectedCount > 1;
 
   // Summary for bulk: how many already have this date? (for preview)
@@ -133,6 +136,42 @@ export default function HolidayLeaveStep({
               </div>
             );
           })()}
+
+          {/* Office proclamations CSV: date,description,type */}
+          <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900">
+            <span className="text-xs font-medium text-slate-700 dark:text-slate-200">Office proclamations</span>
+            <label className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-white dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">
+              <Plus className="h-3 w-3" /> Import CSV
+              <input
+                type="file"
+                accept=".csv,.txt"
+                hidden
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!f) return;
+                  void f.text().then((text) => {
+                    const { entries, skipped } = parseHolidayCsv(text);
+                    let added = 0;
+                    for (const p of entries) {
+                      if (!holidays.some((h) => h.date === p.date)) {
+                        onHol(p);
+                        added++;
+                      }
+                    }
+                    setCsvMsg(
+                      entries.length
+                        ? `CSV: ${added} added, ${entries.length - added} already present${skipped ? `, ${skipped} skipped` : ''}.`
+                        : `CSV: no valid rows${skipped ? ` (${skipped} skipped)` : ''} — need date,description,type per line.`,
+                    );
+                  });
+                }}
+              />
+            </label>
+          </div>
+          {csvMsg && (
+            <p role="status" className="mb-3 text-xs text-slate-600 dark:text-slate-400">{csvMsg}</p>
+          )}
 
           <div className="grid gap-3">
             <Field label="Date">
@@ -334,10 +373,7 @@ export default function HolidayLeaveStep({
               {otherLeavesCount > 0 && (
                 <button
                   type="button"
-                  onClick={() => {
-                    if (!window.confirm(`Copy ${leaves.length} leave(s) from ${activeEmp} to all ${selectedCount} selected?`)) return;
-                    for (const l of leaves) onLeaveAll(l);
-                  }}
+                  onClick={() => setConfirmCopy(true)}
                   disabled={!leaves.length}
                   className="mt-2 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-white disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-300"
                 >
@@ -352,6 +388,18 @@ export default function HolidayLeaveStep({
       <p className="mt-4 flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
         <Trash2 className="h-3 w-3" /> Holidays = everyone · Leaves = {selectedCount > 1 ? 'per-employee (toggle bulk for batch)' : 'per-employee'}.
       </p>
+      <ConfirmDialog
+        spec={confirmCopy ? {
+          title: `Copy leaves to all ${selectedCount}?`,
+          body: `Copy ${leaves.length} leave(s) from ${activeEmp} to all selected employees.`,
+          confirmLabel: 'Copy to all',
+        } : null}
+        onCancel={() => setConfirmCopy(false)}
+        onConfirm={() => {
+          setConfirmCopy(false);
+          for (const l of leaves) onLeaveAll(l);
+        }}
+      />
     </Card>
   );
 }

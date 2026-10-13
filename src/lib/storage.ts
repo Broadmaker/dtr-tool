@@ -30,7 +30,12 @@ export function savePrefs(p: Prefs) {
   try { localStorage.setItem(K, JSON.stringify(p)); } catch { /* ignore */ }
 }
 
-/** Last attendance snapshot for session Undo (kept tiny: only when user edits). */
+/** Last attendance snapshot for session Undo (kept tiny: only when user edits).
+ * Privacy: single employee, expires after 30 min, cleared on Clear-data.
+ * This is the one deliberate exception to "prefs only" in localStorage —
+ * in-memory history is preferred; this exists only for reload recovery. */
+export const UNDO_TTL_MS = 30 * 60 * 1000;
+
 export function saveUndoSnapshot(emp: string, days: Record<string, { amIn: string; amOut: string; pmIn: string; pmOut: string }>) {
   try { localStorage.setItem(K_UNDO, JSON.stringify({ emp, days, at: Date.now() })); } catch { /* ignore */ }
 }
@@ -39,9 +44,13 @@ export function loadUndoSnapshot(): { emp: string; days: Record<string, { amIn: 
   try {
     const raw = localStorage.getItem(K_UNDO);
     if (!raw) return null;
-    const v = JSON.parse(raw);
+    const v = JSON.parse(raw) as { emp?: string; days?: Record<string, { amIn: string; amOut: string; pmIn: string; pmOut: string }>; at?: number };
     if (!v?.emp || !v?.days) return null;
-    return v;
+    if (typeof v.at === 'number' && Date.now() - v.at > UNDO_TTL_MS) {
+      try { localStorage.removeItem(K_UNDO); } catch { /* ignore */ }
+      return null;
+    }
+    return { emp: v.emp, days: v.days };
   } catch { return null; }
 }
 

@@ -10,5 +10,6 @@ export const SUPPORT = {
   helpUrl: 'https://github.com/Broadmaker/dtr-tool/issues',
   // e.g. 'https://ko-fi.com/<you>' or 'https://github.com/sponsors/<you>'.
   // Set to a public maintainer-owned tip page; the UI shows "coming soon" when empty.
-  donateUrl: 'https://ko-fi.com/broadmaker',
+  // Live PayMongo storefront — voluntary support, never required to use the app.
+  donateUrl: 'https://storefront.paymongo.com/broadmarker',
 } as const;

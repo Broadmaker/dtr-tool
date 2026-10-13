@@ -8,19 +8,24 @@ const HolidayLeaveStep = lazy(() => import('./components/HolidayLeaveStep'));
 const PreviewStep = lazy(() => import('./components/PreviewStep'));
 import { Btn, Card } from './components/ui';
 import PersonPills from './components/PersonPills';
+import ConfirmDialog from './components/ConfirmDialog';
+import VaultDialog from './components/VaultDialog';
+import PrintSupportDialog from './components/PrintSupportDialog';
+import { SUPPORT } from './lib/support';
 import { Page, PrivacyStrip, Stepper, Toast, TopBar, Footer } from './components/shell';
 import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
   FileSpreadsheet,
+  Save,
   ShieldCheck,
   Undo2,
   Users,
 } from 'lucide-react';
 import type { ParseResult } from './lib/parser';
-import { autoMap, guessPeriod, parseBiometricFile, readSheetGrid, remapMatrixEmployees } from './lib/parser';
-import { resolveMonth, validateDays } from './lib/rules';
+import { autoMap, guessPeriod } from './lib/parser';
+import { parseFile, readGrid } from './lib/parseClient';
 import type { DayEntry, EmployeeInfo, LeaveEntry } from './lib/types';
 import type { ColumnMap, SheetPreview } from './lib/columns';
 import { unmapped } from './lib/columns';
@@ -29,11 +34,20 @@ import { deletePreset, findPreset, loadPresets, presetFitsLayout, savePreset } f
 import { downloadXlsx, downloadZip } from './lib/export';
 import type { ExportBundle } from './lib/export';
 import { makeSampleFile } from './lib/sample';
-import { monthName, toISODate } from './lib/dateUtils';
+import { monthName } from './lib/dateUtils';
 import { applyTheme, loadTheme } from './lib/theme';
 import type { Theme } from './lib/theme';
 import { clearUndoSnapshot, loadPrefs, loadUndoSnapshot, savePrefs, saveUndoSnapshot } from './lib/storage';
-import { buildFlashFillOverrides, computeTypicalTimes } from './lib/fill';
+import { buildFlashFillOverrides } from './lib/fill';
+import { buildBundles } from './lib/bundles';
+import { useAttendanceReview } from './hooks/useAttendanceReview';
+import { useBeforeUnload } from './hooks/useBeforeUnload';
+import {
+  downloadTextFile,
+  encryptSnapshot,
+  snapshotToParseResult,
+} from './lib/session';
+import type { SessionSnapshot } from './lib/session';
 
 type Step = 0 | 1 | 2 | 3 | 4 | 5;
 const STEP_LABELS = ['Upload', 'Employees', 'Period', 'Review', 'Holidays', 'Export'];
@@ -70,6 +84,13 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(loadTheme);
   const [deferredPrompt, setDeferredPrompt] = useState<{ prompt: () => void } | null>(null);
   const [history, setHistory] = useState<Record<string, Record<string, DayEntry>>[]>([]);
+  const [confirm, setConfirm] = useState<{ title: string; body: string; confirmLabel: string; action: 'clear' | 'flash' } | null>(null);
+  const [vaultOpen, setVaultOpen] = useState(false);
+  const [vaultBusy, setVaultBusy] = useState(false);
+  const [vaultError, setVaultError] = useState('');
+  // WinRAR-style support reminder: set on every print click, cleared when
+  // the dialog resolves. Printing always proceeds — the dialog never gates.
+  const [printPrompt, setPrintPrompt] = useState<null | { kind: 'single' | 'batch' }>(null);
 
   useEffect(() => { applyTheme(theme); }, [theme]);
   useEffect(() => {
@@ -116,21 +137,34 @@ export default function App() {
   };
 
   const clearAll = () => {
-    if (!window.confirm('Remove uploaded data and settings from this session?')) return;
+    setConfirm({
+      title: 'Clear session?',
+      body: 'This removes the uploaded attendance data and all current settings from this session.',
+      confirmLabel: 'Clear data',
+      action: 'clear',
+    });
+  };
+
+  const doClear = () => {
     setParsed(null); setFileName(''); setSelected(new Set());
     setActiveEmp(''); setOverrides({}); setHolidays([]); setLeaves({}); setEmpInfos({});
     setMapFile(null); setMapPreview(null); setMapError('');
+    setHistory([]);
+    clearUndoSnapshot();
     setStep(0);
   };
 
+  // Warn before refresh/close while attendance is in memory (privacy model = tab memory only).
+  useBeforeUnload(!!parsed);
+
   const needMapping = async (f: File, err: string) => {
     try {
-      const preview = await readSheetGrid(f);
+      const preview = await readGrid(f);
       // Zero-click repeat: a saved preset matches this exact header layout.
       const hit = findPreset(preview.headers);
       if (hit && presetFitsLayout(hit, preview.headers.length)) {
         try {
-          const r = await parseBiometricFile(f, hit.map);
+          const r = await parseFile(f, hit.map);
           onParsed(r, f);
           flash(`Used saved mapping: ${hit.name}`);
           return;
@@ -154,7 +188,7 @@ export default function App() {
     if (!mapFile) return;
     setMapBusy(true); setMapError('');
     try {
-      const r = await parseBiometricFile(mapFile, colMap);
+      const r = await parseFile(mapFile, colMap);
       onParsed(r, mapFile);
     } catch (e) {
       setMapError(e instanceof Error ? e.message : 'Mapping still produced no punches.');
@@ -178,7 +212,7 @@ export default function App() {
   const loadSample = async () => {
     try {
       const f = await makeSampleFile();
-      const r = await parseBiometricFile(f);
+      const r = await parseFile(f);
       setFileName('sample-biometric.xlsx (demo)');
       onParsed(r, f);
       setFileName('sample-biometric.xlsx (demo)');
@@ -187,73 +221,53 @@ export default function App() {
     }
   };
 
-  // Day-matrix: remap stored ISO dates when user changes period (day-number preserving)
-  const effectiveEmployees = useMemo(() => {
-    if (!parsed?.matrixAssumed) return parsed?.employees ?? [];
-    return remapMatrixEmployees(parsed.employees, parsed.matrixAssumed, { month, year });
-  }, [parsed, month, year]);
-
-  const effectiveOverrides = useMemo(() => {
-    if (!parsed?.matrixAssumed) return overrides;
-    const a = parsed.matrixAssumed;
-    if (a.month === month && a.year === year) return overrides;
-    const out: Record<string, Record<string, DayEntry>> = {};
-    for (const [emp, map] of Object.entries(overrides)) {
-      const remapped: Record<string, DayEntry> = {};
-      for (const [iso, entry] of Object.entries(map)) {
-        const day = Number(iso.slice(8, 10));
-        if (!Number.isFinite(day) || day < 1 || day > 31) continue;
-        remapped[toISODate(year, month, day)] = entry;
-      }
-      out[emp] = remapped;
-    }
-    return out;
-  }, [overrides, parsed, month, year]);
-
-  const baseDays = useMemo(() => {
-    const emp = effectiveEmployees.find((e) => e.name === activeEmp);
-    return emp?.days ?? {};
-  }, [effectiveEmployees, activeEmp]);
-
-  const merged: Record<string, DayEntry> = useMemo(
-    () => ({ ...baseDays, ...(effectiveOverrides[activeEmp] ?? {}) }),
-    [baseDays, effectiveOverrides, activeEmp],
-  );
-
-  const hasUndoSnapshot = useMemo(() => {
-    void history;
-    void activeEmp;
-    return !!loadUndoSnapshot();
-  }, [history, activeEmp]);
-
-  const empLeaves = useMemo(() => leaves[activeEmp] ?? [], [leaves, activeEmp]);
-  const days = useMemo(
-    () => resolveMonth(merged, month, year, holidays, empLeaves),
-    [merged, month, year, holidays, empLeaves],
-  );
-  const issues = useMemo(() => validateDays(days), [days]);
-  const typical = useMemo(() => computeTypicalTimes(days, (empInfos[activeEmp]?.officialHours ?? prefs.officialHours)), [days, empInfos, activeEmp, prefs.officialHours]);
-  const typicalHint = `${typical.amIn} · ${typical.amOut} · ${typical.pmIn} · ${typical.pmOut}`;
+  // Derived review data (matrix remap, merged days, validation, schedule, info).
+  const {
+    effectiveEmployees,
+    effectiveOverrides,
+    merged,
+    hasUndoSnapshot,
+    empLeaves,
+    days,
+    issues,
+    typical,
+    typicalHint,
+    info,
+    chosen,
+  } = useAttendanceReview({
+    parsed,
+    month,
+    year,
+    overrides,
+    activeEmp,
+    leaves,
+    holidays,
+    empInfos,
+    prefs,
+    history,
+    selected,
+  });
   const flashFill = useCallback(() => {
     const toFill = buildFlashFillOverrides(days, typical);
     const count = Object.keys(toFill).length;
     if (!count) { flash('No blank workdays to fill.'); return; }
-    if (!window.confirm(`Flash Fill ${count} blank/incomplete workday${count > 1 ? 's' : ''} with ${typicalHint} for ${activeEmp}? You can Undo.`)) return;
+    setConfirm({
+      title: `Flash Fill ${count} day${count > 1 ? 's' : ''}?`,
+      body: `Fill blank/incomplete workdays with ${typicalHint} for ${activeEmp}. You can Undo.`,
+      confirmLabel: `Fill ${count} day${count > 1 ? 's' : ''}`,
+      action: 'flash',
+    });
+  }, [days, typical, typicalHint, activeEmp, flash]);
+
+  const doFlashFill = useCallback(() => {
+    const toFill = buildFlashFillOverrides(days, typical);
+    const count = Object.keys(toFill).length;
+    if (!count) { flash('No blank workdays to fill.'); return; }
     setHistory((h) => [...h.slice(-19), overrides]);
     saveUndoSnapshot(activeEmp, Object.fromEntries(Object.entries(merged).map(([k, v]) => [k, { amIn: v.amIn, amOut: v.amOut, pmIn: v.pmIn, pmOut: v.pmOut }])));
     setOverrides((o) => ({ ...o, [activeEmp]: { ...(o[activeEmp] ?? {}), ...toFill } }));
     flash(`Flash-filled ${count} day${count > 1 ? 's' : ''} for ${activeEmp.split(' ')[0]}`);
-  }, [days, typical, typicalHint, activeEmp, merged, overrides, flash]);
-  const activeStored = empInfos[activeEmp] ?? {};
-  const info: EmployeeInfo = useMemo(() => ({
-    name: (activeStored.name ?? activeEmp).toUpperCase(),
-    position: activeStored.position ?? prefs.position,
-    office: activeStored.office ?? prefs.office,
-    officialHours: activeStored.officialHours ?? prefs.officialHours,
-    verifier: activeStored.verifier ?? prefs.verifier ?? '',
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [empInfos, activeEmp, prefs.position, prefs.office, prefs.officialHours, prefs.verifier]);
-
+  }, [days, typical, activeEmp, merged, overrides, flash]);
   const toggle = useCallback((n: string) => setSelected((s) => {
     const c = new Set(s);
     if (c.has(n)) c.delete(n); else c.add(n);
@@ -342,40 +356,101 @@ export default function App() {
     flash(`Applied ${label} “${value}” to ${selected.size} employee${selected.size > 1 ? 's' : ''}.`);
   };
 
-  const chosen = useMemo(
-    () => effectiveEmployees.filter((e) => selected.has(e.name)),
-    [effectiveEmployees, selected],
+  const bundles = useCallback(
+    (): ExportBundle[] =>
+      buildBundles({
+        employees: effectiveEmployees,
+        overrides: effectiveOverrides,
+        leaves,
+        empInfos,
+        prefs,
+        month,
+        year,
+        holidays,
+        selected,
+      }),
+    [effectiveEmployees, effectiveOverrides, leaves, empInfos, prefs, month, year, holidays, selected],
   );
-
-  const bundles = useCallback((): ExportBundle[] =>
-    chosen.map((e) => {
-      const empMerged = { ...e.days, ...(effectiveOverrides[e.name] ?? {}) };
-      const empLv = leaves[e.name] ?? [];
-      const s = empInfos[e.name] ?? {};
-      return {
-        info: {
-          name: (s.name ?? e.name).toUpperCase(),
-          position: s.position ?? prefs.position,
-          office: s.office ?? prefs.office,
-          officialHours: s.officialHours ?? prefs.officialHours,
-          verifier: s.verifier ?? prefs.verifier ?? '',
-        },
-        month, year,
-        days: resolveMonth(empMerged, month, year, holidays, empLv),
-        holidays, leaves: empLv,
-      };
-    }), [chosen, effectiveOverrides, leaves, empInfos, prefs, month, year, holidays]);
 
   // Stable for preview memoization; export/print actions call bundles() fresh.
   const bundleList = useMemo(() => bundles(), [bundles]);
 
   const stamp = `${monthName(month).toLowerCase()}_${year}`;
   const base = (prefs.fileBase || 'DTR').replace(/[\\/?*[\]:]/g, '_').slice(0, 40) || 'DTR';
+
+  const resumeSnapshot = (snap: SessionSnapshot, label: string) => {
+    setParsed(snapshotToParseResult(snap));
+    setFileName(label);
+    setMonth(snap.month);
+    setYear(snap.year);
+    setSelected(new Set(snap.selected));
+    setActiveEmp(snap.activeEmp);
+    setEmpInfos(snap.empInfos);
+    setOverrides(snap.overrides);
+    setHolidays(snap.holidays);
+    setLeaves(snap.leaves);
+    setHistory([]);
+    setMapFile(null);
+    setMapPreview(null);
+    setMapError('');
+    setStep(1);
+    flash(`Resumed checkpoint (${snap.employees.length} employee${snap.employees.length > 1 ? 's' : ''})`);
+  };
+
+  const saveCheckpoint = async (password: string) => {
+    if (!parsed) return;
+    setVaultBusy(true);
+    setVaultError('');
+    try {
+      const snapshot: SessionSnapshot = {
+        version: 1,
+        savedAt: Date.now(),
+        fileName,
+        month,
+        year,
+        activeEmp,
+        selected: [...selected],
+        overrides,
+        holidays,
+        leaves,
+        empInfos,
+        employees: parsed.employees,
+        punches: parsed.punches,
+        sheetName: parsed.sheetName,
+        warnings: parsed.warnings,
+        matrixAssumed: parsed.matrixAssumed,
+      };
+      const text = await encryptSnapshot(snapshot, password);
+      downloadTextFile(text, `${base}_checkpoint_${stamp}.dtrvault`);
+      setVaultOpen(false);
+      flash('Checkpoint saved — keep the file and password safe.');
+    } catch (e) {
+      setVaultError(e instanceof Error ? e.message : 'Failed to save checkpoint.');
+    } finally {
+      setVaultBusy(false);
+    }
+  };
   const doXlsx = async () => {
     const b = bundles();
     if (!b.length) { flash('Select at least one employee first.'); return; }
     await downloadXlsx(b, b.length === 1 ? `${base}_${b[0].info.name}.xlsx` : `${base}_${stamp}.xlsx`);
     flash(`Excel downloaded (${b.length} sheet${b.length > 1 ? 's' : ''}).`);
+  };
+  const requestPrint = (kind: 'single' | 'batch') => {
+    // No donation channel configured → print directly, no dialog.
+    if (!SUPPORT.donateUrl) {
+      if (kind === 'single') doPrintSingle();
+      else doPrintBatch();
+      return;
+    }
+    setPrintPrompt({ kind });
+  };
+
+  const proceedPrint = () => {
+    const kind = printPrompt?.kind;
+    setPrintPrompt(null);
+    if (kind === 'single') doPrintSingle();
+    else if (kind === 'batch') doPrintBatch();
   };
   const doPrintSingle = () => {
     document.documentElement.setAttribute('data-print', 'single');
@@ -425,7 +500,14 @@ export default function App() {
           <PrivacyStrip />
         </div>
 
-        {!parsed && !mapPreview && <UploadStep onParsed={onParsed} onNeedMap={needMapping} onSample={loadSample} />}
+        {!parsed && !mapPreview && (
+          <UploadStep
+            onParsed={onParsed}
+            onNeedMap={needMapping}
+            onSample={loadSample}
+            onResume={resumeSnapshot}
+          />
+        )}
         {!parsed && mapPreview && mapFile && (
           <Suspense fallback={<StepFallback />}>
             <ColumnMappingStep
@@ -462,6 +544,20 @@ export default function App() {
                     {selected.size} selected — {parsed.employees.length - selected.size} hidden from export
                   </span>
                 )}
+                <Btn
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setVaultError('');
+                    setVaultOpen(true);
+                  }}
+                  aria-label="Save encrypted checkpoint"
+                  title="Save an encrypted checkpoint file to resume later"
+                  className="ml-auto"
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  <span className="hidden sm:inline">Checkpoint</span>
+                </Btn>
               </div>
             </Card>
 
@@ -537,7 +633,7 @@ export default function App() {
                   </div>
                 </Card>
                 <Suspense fallback={<StepFallback />}>
-                  <AttendanceStep days={days} holidays={holidays} leaves={empLeaves} onEdit={edit} onHoliday={toggleHoliday} onLeave={toggleLeave} onClear={clearDay} onFlashFill={flashFill} typicalHint={typicalHint} />
+                  <AttendanceStep days={days} holidays={holidays} leaves={empLeaves} scheduleStr={info.officialHours} onEdit={edit} onHoliday={toggleHoliday} onLeave={toggleLeave} onClear={clearDay} onFlashFill={flashFill} typicalHint={typicalHint} />
                 </Suspense>
               </div>
             )}
@@ -581,7 +677,7 @@ export default function App() {
                 info={info} month={month} year={year} days={days} holidays={holidays} leaves={empLeaves} issues={issues}
                 selectedCount={chosen.length} selectedNames={chosen.map((c) => c.name)} activeEmp={activeEmp}
                 fileBase={prefs.fileBase || 'DTR'} onFileBase={(v) => patchPrefs({ fileBase: v })}
-                onPrint={doPrintSingle} onPrintAll={doPrintBatch} onXlsx={doXlsx} onZip={doZip} bundles={bundleList} onSwitchEmp={(name) => setActiveEmp(name)}
+                onPrint={() => requestPrint('single')} onPrintAll={() => requestPrint('batch')} onXlsx={doXlsx} onZip={doZip} bundles={bundleList} onSwitchEmp={(name) => setActiveEmp(name)}
               />
               </Suspense>
             )}
@@ -615,6 +711,33 @@ export default function App() {
       </Page>
       <Footer />
       <Toast msg={toast} />
+      {vaultOpen && (
+        <VaultDialog
+          mode="save"
+          busy={vaultBusy}
+          error={vaultError}
+          onCancel={() => {
+            if (!vaultBusy) setVaultOpen(false);
+          }}
+          onSubmit={(pw) => void saveCheckpoint(pw)}
+        />
+      )}
+      {printPrompt && (
+        <PrintSupportDialog
+          title={printPrompt.kind === 'batch' ? `Print all ${chosen.length} DTRs` : 'Print this DTR'}
+          onProceed={proceedPrint}
+        />
+      )}
+      <ConfirmDialog
+        spec={confirm}
+        onCancel={() => setConfirm(null)}
+        onConfirm={() => {
+          const action = confirm?.action;
+          setConfirm(null);
+          if (action === 'clear') doClear();
+          else if (action === 'flash') doFlashFill();
+        }}
+      />
     </>
   );
 }

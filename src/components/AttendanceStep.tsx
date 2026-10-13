@@ -2,6 +2,7 @@ import { memo, useMemo, useState } from 'react';
 import { AlertTriangle, Clock, Pencil, Search, Sparkles, X } from 'lucide-react';
 import type { DayEntry, HolidayEntry, LeaveEntry, ResolvedDay } from '../lib/types';
 import { prettyDate } from '../lib/dateUtils';
+import { classifyDay } from '../lib/schedule';
 import { Btn, Card, SectionTitle, TextInput } from './ui';
 
 const FIELDS: { key: keyof DayEntry; label: string }[] = [
@@ -17,6 +18,7 @@ function AttendanceStep({
   days,
   holidays,
   leaves,
+  scheduleStr,
   onEdit,
   onHoliday,
   onLeave,
@@ -27,6 +29,7 @@ function AttendanceStep({
   days: ResolvedDay[];
   holidays: HolidayEntry[];
   leaves: LeaveEntry[];
+  scheduleStr?: string;
   onEdit: (date: string, field: keyof DayEntry, value: string) => void;
   onHoliday: (date: string) => void;
   onLeave: (date: string) => void;
@@ -57,6 +60,11 @@ function AttendanceStep({
       return <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-semibold text-sky-800 ring-1 ring-sky-200 dark:bg-sky-950/40 dark:text-sky-200 dark:ring-sky-900/50">Leave</span>;
     if (d.weekday === 0 || d.weekday === 6)
       return <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 ring-1 ring-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-700">Weekend</span>;
+    if (d.hasPunch) {
+      const status = classifyDay(d.entry, scheduleStr).status;
+      if (status === 'half-am' || status === 'half-pm')
+        return <span className="ml-2 rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-semibold text-violet-800 ring-1 ring-violet-200 dark:bg-violet-950/40 dark:text-violet-200 dark:ring-violet-900/50">Half-day</span>;
+    }
     return null;
   };
 

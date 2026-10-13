@@ -18,6 +18,18 @@ function fmtTime(t: string): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00`;
 }
 
+/**
+ * CSV/formula-injection guard: SheetJS writes strings starting with
+ * = + - @ (plus tab/CR) as live formulas when opened in Excel.
+ * Employee names / offices come straight from the biometric file, so
+ * prefix risky values with a single quote (Excel shows the text, not the quote).
+ */
+export function safeCell(s: string): string {
+  if (!s) return s;
+  if (/^[=+\-@\t\r]/.test(s)) return `'${s}`;
+  return s;
+}
+
 function dayLabel(d: ResolvedDay): string {
   const wd = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][d.weekday];
   if (d.weekday === 0 || d.weekday === 6) return `${d.dayOfMonth} ${wd}`;
@@ -36,23 +48,23 @@ export async function buildBatchWorkbook(bundles: ExportBundle[]) {
     const rows: (string | number)[][] = [
       ['Civil Service Form No. 48'],
       ['DAILY TIME RECORD'],
-      [`Name: ${b.info.name}`],
-      [`Station: ${b.info.office || ''}`],
-      [`Official Hours: ${official}`],
+      [`Name: ${safeCell(b.info.name)}`],
+      [`Station: ${safeCell(b.info.office || '')}`],
+      [`Official Hours: ${safeCell(official)}`],
       [`For the month of ${capMonth}, ${b.year}`],
       ['Official hours for arrival and departure'],
       ['Day', 'A.M. Arrival', 'A.M. Departure', 'P.M. Arrival', 'P.M. Departure', 'Undertime Hours', 'Undertime Min'],
     ];
     for (const d of b.days) {
-      const u = undertimeForDay(d);
+      const u = undertimeForDay(d, b.info.officialHours);
       if (d.kind === 'holiday') {
-        const desc = d.holiday?.description ? ` — ${d.holiday.description}` : '';
+        const desc = d.holiday?.description ? ` — ${safeCell(d.holiday.description)}` : '';
         const type = d.holiday?.type ? ` (${d.holiday.type})` : '';
         rows.push([dayLabel(d), `HOLIDAY${type}${desc}`, '', '', '', u.h, u.m]);
         continue;
       }
       if (d.kind === 'leave') {
-        const lt = (d.leaveType ?? 'LEAVE').toUpperCase();
+        const lt = safeCell((d.leaveType ?? 'LEAVE').toUpperCase());
         rows.push([dayLabel(d), lt, '', '', '', u.h, u.m]);
         continue;
       }
@@ -66,13 +78,13 @@ export async function buildBatchWorkbook(bundles: ExportBundle[]) {
         u.m,
       ]);
     }
-    const tot = totalUndertime(b.days);
+    const tot = totalUndertime(b.days, b.info.officialHours);
     rows.push(['Total Undertime', '', '', '', '', tot.h, tot.m]);
     rows.push([]);
     rows.push(['I certify on my honor that the above is a true and correct report of the hours of work performed, record of which was made daily at the time of arrival and departure from office.']);
-    rows.push([b.info.name]);
+    rows.push([safeCell(b.info.name)]);
     rows.push(['Verified as to the prescribed office hours']);
-    rows.push([b.info.verifier || '']);
+    rows.push([safeCell(b.info.verifier || '')]);
 
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws['!cols'] = [{ wch: 14 }, { wch: 13 }, { wch: 14 }, { wch: 13 }, { wch: 14 }, { wch: 10 }, { wch: 8 }];

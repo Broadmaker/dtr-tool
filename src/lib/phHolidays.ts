@@ -2,6 +2,7 @@
 // Source: Official Gazette proclamations; keep year-keyed so February 2026 etc. don't bleed.
 // Add new years as they are proclaimed; UI gracefully handles missing years.
 import type { HolidayEntry } from './types';
+import { normalizeDate } from './dateUtils';
 
 export const PH_HOLIDAYS: Record<number, HolidayEntry[]> = {
   2025: [
@@ -51,4 +52,36 @@ export function holidaysForMonth(year: number, month: number): HolidayEntry[] {
 
 export function holidaysForYear(year: number): HolidayEntry[] {
   return PH_HOLIDAYS[year] ?? [];
+}
+
+/**
+ * Parse an office-proclamation CSV locally: `date,description,type` per line,
+ * header row optional. Type defaults to Special when unrecognized.
+ * Returns { added, skipped } counts — never throws on bad lines.
+ */
+export function parseHolidayCsv(text: string): { entries: HolidayEntry[]; skipped: number } {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  const entries: HolidayEntry[] = [];
+  let skipped = 0;
+  for (const [i, line] of lines.entries()) {
+    // Skip a header row (first line mentioning date + description/type)
+    if (i === 0 && /date/i.test(line) && /(desc|type|holiday|name)/i.test(line)) continue;
+    // Split on comma/semicolon/tab, strip surrounding quotes
+    const cells = line.split(/[,;\t]/).map((c) => c.trim().replace(/^"|"$/g, '').replace(/^'|'$/g, ''));
+    if (cells.length < 1) { skipped++; continue; }
+    const iso = normalizeDate(cells[0]);
+    if (!iso) { skipped++; continue; }
+    const description = (cells[1] || 'Holiday').slice(0, 80);
+    const typeRaw = (cells[2] || '').toLowerCase();
+    const type: HolidayEntry['type'] = typeRaw.startsWith('reg') ? 'Regular' : 'Special';
+    entries.push({ date: iso, description, type });
+  }
+  // Dedupe by date, keep first
+  const seen = new Set<string>();
+  const deduped = entries.filter((e) => {
+    if (seen.has(e.date)) return false;
+    seen.add(e.date);
+    return true;
+  });
+  return { entries: deduped, skipped };
 }

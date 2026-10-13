@@ -1,5 +1,6 @@
 // Flash Fill for blank/incomplete records — infers missing times from existing patterns.
 import { toMinutes, toHHMM } from './dateUtils';
+import { parseOfficialHours } from './schedule';
 import type { DayEntry, ResolvedDay } from './types';
 
 export interface TypicalTimes {
@@ -9,36 +10,7 @@ export interface TypicalTimes {
   pmOut: string;
 }
 
-/** Parse officialHours like "8:00AM–12:00NN & 1:00PM–5:00PM" into 4 slots. Fallback to 08:00/12:00/13:00/17:00. */
-export function parseOfficialHours(s: string): TypicalTimes {
-  const fallback: TypicalTimes = { amIn: '08:00', amOut: '12:00', pmIn: '13:00', pmOut: '17:00' };
-  if (!s) return fallback;
-  // Extract all time-like tokens
-  const tokens = s.match(/\d{1,2}:\d{2}\s*(?:AM|PM|NN)?/gi);
-  if (!tokens || tokens.length < 2) return fallback;
-  // Normalize "12:00NN" -> 12:00 PM, "12:00MN" -> 12:00 AM
-  const norm = tokens.map((t) => {
-    let v = t.trim().toUpperCase().replace('NN', 'PM').replace('MN', 'AM');
-    // ensure AM/PM
-    if (!/AM|PM/.test(v)) {
-      // infer: first two <12 => AM, else PM
-      const [h] = v.split(':').map(Number);
-      v = `${v} ${h < 12 ? 'AM' : 'PM'}`;
-    }
-    // convert to HH:MM via simple parse
-    const m = v.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/);
-    if (!m) return '';
-    let h = Number(m[1]);
-    const min = m[2];
-    const ap = m[3];
-    if (ap === 'PM' && h < 12) h += 12;
-    if (ap === 'AM' && h === 12) h = 0;
-    return `${String(h).padStart(2, '0')}:${min}`;
-  }).filter(Boolean);
-  if (norm.length >= 4) return { amIn: norm[0], amOut: norm[1], pmIn: norm[2], pmOut: norm[3] };
-  if (norm.length === 2) return { amIn: norm[0], amOut: fallback.amOut, pmIn: fallback.pmIn, pmOut: norm[1] };
-  return fallback;
-}
+export { parseOfficialHours };
 
 function medianTime(times: string[]): string {
   const mins = times.map(toMinutes).filter((n) => !Number.isNaN(n)).sort((a, b) => a - b);

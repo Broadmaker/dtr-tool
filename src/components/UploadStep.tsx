@@ -1,23 +1,31 @@
 import { useState } from 'react';
-import { AlertCircle, ArrowUpRight, FileSpreadsheet, Loader2, ShieldCheck, Sparkles, UploadCloud } from 'lucide-react';
-import { parseBiometricFile } from '../lib/parser';
+import { AlertCircle, ArrowUpRight, FileSpreadsheet, KeyRound, Loader2, ShieldCheck, Sparkles, UploadCloud } from 'lucide-react';
+import { parseFile } from '../lib/parseClient';
 import type { ParseResult } from '../lib/parser';
+import { decryptSnapshot } from '../lib/session';
+import type { SessionSnapshot } from '../lib/session';
 import { Btn, Card, SectionTitle } from './ui';
 import SupportCard from './SupportCard';
 import RefreshHint from './RefreshHint';
+import VaultDialog from './VaultDialog';
 
 export default function UploadStep({
   onParsed,
   onNeedMap,
   onSample,
+  onResume,
 }: {
   onParsed: (r: ParseResult, file: File) => void;
   onNeedMap: (file: File, err: string) => void;
   onSample: () => void;
+  onResume: (snap: SessionSnapshot, label: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
   const [drag, setDrag] = useState(false);
+  const [vaultFile, setVaultFile] = useState<{ text: string; name: string } | null>(null);
+  const [vaultBusy, setVaultBusy] = useState(false);
+  const [vaultError, setVaultError] = useState('');
 
   const handle = async (f: File | undefined) => {
     if (!f) return;
@@ -35,7 +43,7 @@ export default function UploadStep({
     }
     setBusy(true);
     try {
-      const r = await parseBiometricFile(f);
+      const r = await parseFile(f);
       onParsed(r, f);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to parse file.';
@@ -120,6 +128,29 @@ export default function UploadStep({
               <span>{err}</span>
             </div>
           )}
+
+          <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
+            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600 dark:text-slate-300">
+              <KeyRound className="h-3.5 w-3.5" /> Have a checkpoint file?
+            </span>
+            <label className="ml-auto inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-white dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200">
+              Resume .dtrvault
+              <input
+                type="file"
+                accept=".dtrvault,.json"
+                hidden
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = '';
+                  if (!f) return;
+                  void f.text().then((text) => {
+                    setVaultError('');
+                    setVaultFile({ text, name: f.name });
+                  });
+                }}
+              />
+            </label>
+          </div>
         </div>
 
         <div className="border-t border-slate-200 bg-slate-50/70 px-6 py-4 dark:border-slate-800 dark:bg-slate-900/50">
@@ -166,6 +197,32 @@ export default function UploadStep({
         <SupportCard />
         <RefreshHint />
       </div>
+      {vaultFile && (
+        <VaultDialog
+          mode="load"
+          busy={vaultBusy}
+          error={vaultError}
+          onCancel={() => {
+            if (!vaultBusy) setVaultFile(null);
+          }}
+          onSubmit={(pw) => {
+            setVaultBusy(true);
+            setVaultError('');
+            void decryptSnapshot(vaultFile.text, pw)
+              .then((snap) => {
+                const label = vaultFile.name.replace(/\.dtrvault$/i, '');
+                setVaultFile(null);
+                onResume(snap, `${label} (checkpoint)`);
+              })
+              .catch((e) => {
+                setVaultError(e instanceof Error ? e.message : 'Could not open checkpoint.');
+              })
+              .finally(() => {
+                setVaultBusy(false);
+              });
+          }}
+        />
+      )}
     </div>
   );
 }

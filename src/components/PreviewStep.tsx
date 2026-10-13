@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import type { EmployeeInfo, HolidayEntry, LeaveEntry, ResolvedDay, ValidationIssue } from '../lib/types';
 import type { ExportBundle } from '../lib/export';
+import { lateForResolvedDay, totalUndertime } from '../lib/rules';
 import DtrSheet from './DtrSheet';
 import PersonPills from './PersonPills';
 import { Btn, Card, SectionTitle } from './ui';
@@ -59,6 +60,14 @@ export default function PreviewStep({
   const [busy, setBusy] = useState('');
   const warns = issues.filter((i) => i.level === 'warning');
   const complete = days.filter((d) => d.hasPunch && !d.incomplete).length;
+  const under = totalUndertime(days, info.officialHours);
+  const lateTotal = days.reduce((n, d) => n + lateForResolvedDay(d, info.officialHours).total, 0);
+  const fmtDur = (total: number) => {
+    const h = Math.floor(total / 60);
+    const m = total % 60;
+    if (!total) return 'none';
+    return `${h > 0 ? `${h}h ` : ''}${m}m`;
+  };
 
   const run = async (label: string, fn: () => void | Promise<void>) => {
     setBusy(label);
@@ -93,7 +102,7 @@ export default function PreviewStep({
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
           { label: 'Complete', value: complete, icon: CheckCircle2, bg: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-300' },
-          { label: 'Incomplete', value: warns.length, icon: AlertTriangle, bg: 'bg-amber-500', text: 'text-amber-700 dark:text-amber-300' },
+          { label: 'Issues', value: warns.length, icon: AlertTriangle, bg: 'bg-amber-500', text: 'text-amber-700 dark:text-amber-300' },
           { label: 'Holidays', value: holidays.length, icon: CalendarOff, bg: 'bg-slate-900 dark:bg-slate-700', text: 'text-slate-900 dark:text-slate-100' },
           { label: 'Leaves', value: leaves.length, icon: Leaf, bg: 'bg-sky-500', text: 'text-sky-700 dark:text-sky-300' },
         ].map((s) => (
@@ -109,10 +118,22 @@ export default function PreviewStep({
         ))}
       </div>
 
+      <p className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-600 dark:text-slate-400">
+        <span>
+          Total late <span className="font-semibold text-slate-900 dark:text-white">{fmtDur(lateTotal)}</span>
+        </span>
+        <span aria-hidden className="h-3 w-px bg-slate-200 dark:bg-slate-700" />
+        <span>
+          Total undertime <span className="font-semibold text-slate-900 dark:text-white">{fmtDur(under.total)}</span>
+        </span>
+        <span aria-hidden className="h-3 w-px bg-slate-200 dark:bg-slate-700" />
+        <span className="text-slate-500 dark:text-slate-500">vs {info.officialHours || 'standard schedule'} · {activeEmp}</span>
+      </p>
+
       {warns.length > 0 && (
         <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/30 dark:bg-amber-950/20">
           <p className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-amber-800 dark:text-amber-300">
-            <AlertTriangle className="h-3.5 w-3.5" /> Attention · {warns.length} incomplete
+            <AlertTriangle className="h-3.5 w-3.5" /> Attention · {warns.length} issue{warns.length > 1 ? 's' : ''}
           </p>
           <ul className="space-y-1 text-sm text-amber-900 dark:text-amber-200">
             {warns.slice(0, 6).map((w) => (

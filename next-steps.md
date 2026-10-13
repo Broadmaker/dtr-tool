@@ -29,7 +29,7 @@ Last updated: after saved importer presets + neutral footer/support dialog.
 | Light / Dark / System theme | ✅ done |
 | PWA install + offline | ✅ done |
 | **Batch print (all selected)** | ✅ done (`doPrintBatch` + `.print-batch` container in `print.css`) |
-| CSC form fidelity vs real office form | ⚠️ approximate — item 2 |
+| CSC form fidelity vs real office form | ✅ verified — item 2 |
 | PH holiday preset | ✅ done (`phHolidays.ts` + one-tap load in `HolidayLeaveStep`) |
 | Saved importer presets | ✅ done (`presets.ts`, auto-apply in `needMapping`, save/apply/delete in `ColumnMappingStep`) |
 
@@ -95,7 +95,13 @@ If several `.dtr-sheet` elements were mounted at once they would all be
 
 ---
 
-## 2. CSC form fidelity — match the real office DTR  ⭐ blocked on inputs
+## 2. CSC form fidelity — match the real office DTR  ✅ done (verified by AO)
+
+> Verified against the official form in use: certification wording,
+> signature block labels/order, position & office placement, A4 geometry,
+> and 28/30/31-day month fit all check out. `DtrSheet.tsx` + `dtr.css`
+> confirmed as an accepted replica — no structural changes needed.
+> Notes below are kept as build history.
 
 `DtrSheet.tsx` + `dtr.css` are a faithful *approximation*, not a replica.
 Printing is only useful if the output is accepted by the office.
@@ -112,9 +118,9 @@ Printing is only useful if the output is accepted by the office.
 targets `.dtr-sheet` generically.
 
 **Acceptance criteria**
-- [ ] Printed page overlays the real form within ~2mm.
-- [ ] Row height stays constant across 28/30/31-day months.
-- [ ] Signature lines land at the same position as the official blank.
+- [x] Printed page overlays the real form within ~2mm.
+- [x] Row height stays constant across 28/30/31-day months.
+- [x] Signature lines land at the same position as the official blank.
 
 ---
 
@@ -190,13 +196,43 @@ The next upload from the same biometric machine re-prompts.
 
 - Split/merged PDF output; a "one combined PDF" option
 - Automatic attendance anomaly detection (weekend punch, holiday punch,
-  overnight shift, single-punch day)
+  overnight shift, single-punch day) — ✅ done: `validateDays()`
+  flags weekend/holiday/leave punches, OUT-before-IN, overnight-suspect
+  hours, and half-days (`src/lib/rules.ts` + `schedule.ts`)
+- Engine visibility — ✅ done: Half-day badges in `AttendanceStep`,
+  total late / undertime strip in `PreviewStep` (per active employee's schedule)
 - Schedule engine: parse `officialHours` into real times and compute
-  late / undertime / half-day per day (today it is only a printed string)
-- Per-employee position/office (currently one shared `Prefs` value)
+  late / undertime / half-day per day — ✅ done: `src/lib/schedule.ts`
+  (`parseOfficialHours`, `requiredMinutes`, `lateForDay`, `classifyDay`)
+  feeds Flash Fill, undertime, half-day info issues, and Excel export per employee
+- Session checkpoint — ✅ done: explicit password-protected `.dtrvault`
+  save/load (`src/lib/session.ts`, WebCrypto PBKDF2/AES-GCM, `VaultDialog`,
+  Checkpoint button + Resume in `UploadStep`); nothing auto-persisted
+- Per-employee position/office — ✅ done (`empInfos` + apply-to-all in
+  `ConfigStep`/`App.tsx`; `bundles()` prints per-employee values)
+- Saved importer presets for office proclamations — ✅ done for holidays
+  (CSV import in `HolidayLeaveStep` + `parseHolidayCsv`)
+- `window.confirm` — ✅ done (accessible `ConfirmDialog` in `App.tsx` +
+  `HolidayLeaveStep.tsx`)
+- `parser.ts` split — ✅ done (`src/lib/importers/`: `common`,
+  `extractedDtr`, `cscForm48`, `segmentRecord`, `attendanceReport`,
+  `attendanceLog`; `parser.ts` keeps the orchestrator + generic grid mapping)
+- Per-template regression tests — ✅ done (`importers.test.ts`: 11 tests over
+  synthetic grids for all 6 layouts + mutual-exclusion guards)
+- `App.tsx` derived-data split — ✅ done (`useAttendanceReview` hook +
+  pure `buildBundles()` in `src/lib/bundles.ts` with tests; orchestrator keeps
+  raw state + actions only)
+- CI — ✅ done (`.github/workflows/ci.yml`: install → tsc → oxlint → vitest → build)
+- WinRAR-style print reminder — ✅ done (`PrintSupportDialog` with donation
+  QR on every print click; every dismissal prints; auto-skipped when
+  `donateUrl` is empty; swap in the PayMongo link when ready)
+- Background-thread parsing — ✅ done (`src/workers/parse.worker.ts` +
+  `src/lib/parseClient.ts` with transparent main-thread fallback; all upload,
+  mapping, and sample paths routed through it; worker ships as a separate
+  lazy chunk)
 - Employee information manager, DTR validator view, Print Center (§23)
-- Extended validation surface: `validateDays()` already emits `level: 'info'`
-  issues that the Preview step does not display yet
+- Extended validation surface: overnight-shift and single-punch-specific
+  messages (covered today by generic incomplete + OUT-before-IN warnings)
 
 ---
 
