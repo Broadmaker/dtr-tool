@@ -7,7 +7,7 @@ import { SUPPORT } from '../lib/support';
  * reads as a toll. Links are external and maintainer-owned (see support.ts).
  */
 export default function SupportCard() {
-  if (!SUPPORT.donateUrl && !SUPPORT.helpUrl) return null;
+  if (!SUPPORT.donateOptions.length && !SUPPORT.helpUrl) return null;
   return (
     <aside
       aria-label="Support the project"
@@ -31,16 +31,30 @@ export default function SupportCard() {
         Chip in to keep it running — voluntary, never required, and not payment for any official service.
       </p>
       <div className="mt-3 flex flex-col gap-2">
-        {SUPPORT.donateUrl && (
-          <a
-            href={SUPPORT.donateUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center justify-center gap-1.5 rounded-full bg-amber-500 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-amber-600"
-          >
-            <Coffee className="h-3.5 w-3.5" aria-hidden /> Buy me a coffee
-            <ExternalLink className="h-3 w-3 opacity-70" aria-hidden />
-          </a>
+        {SUPPORT.donateOptions.map((opt, i) =>
+          i === 0 ? (
+            <a
+              key={opt.label}
+              href={opt.url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center justify-center gap-1.5 rounded-full bg-amber-500 px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-amber-600"
+            >
+              <Coffee className="h-3.5 w-3.5" aria-hidden /> Support via {opt.label}
+              <ExternalLink className="h-3 w-3 opacity-70" aria-hidden />
+            </a>
+          ) : (
+            <a
+              key={opt.label}
+              href={opt.url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center justify-center gap-1.5 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-medium text-slate-700 shadow-sm transition hover:border-slate-300 hover:text-slate-900 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-300 dark:hover:text-white"
+            >
+              {opt.label} <span className="opacity-70">· {opt.blurb}</span>
+              <ExternalLink className="h-3 w-3 opacity-70" aria-hidden />
+            </a>
+          ),
         )}
         {SUPPORT.helpUrl && (
           <a

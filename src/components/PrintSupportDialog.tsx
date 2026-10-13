@@ -19,10 +19,20 @@ export default function PrintSupportDialog({
   const boxRef = useRef<HTMLDivElement>(null);
   const prevFocus = useRef<Element | null>(null);
   const [expanded, setExpanded] = useState(false);
+  // Shareware-style beat: the button unlocks after a short pause.
+  const [remaining, setRemaining] = useState(5);
+
+  useEffect(() => {
+    if (remaining <= 0) {
+      boxRef.current?.querySelector<HTMLButtonElement>('[data-proceed]')?.focus();
+      return;
+    }
+    const timer = window.setTimeout(() => setRemaining((n) => n - 1), 1000);
+    return () => window.clearTimeout(timer);
+  }, [remaining]);
 
   useEffect(() => {
     prevFocus.current = document.activeElement;
-    boxRef.current?.querySelector<HTMLButtonElement>('[data-proceed]')?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -54,7 +64,7 @@ export default function PrintSupportDialog({
           {title}
         </h2>
         <p className="mt-1.5 text-[13px] leading-relaxed text-slate-600 dark:text-slate-300">
-          DTR Tool is free — if it saved you time, consider supporting the project.
+          DTR Tool stays free through user support. If it saved you time today, please scan to contribute.
         </p>
         {SUPPORT.donateUrl && (
           <button
@@ -103,20 +113,41 @@ export default function PrintSupportDialog({
             </div>
           </div>
         )}
+        {SUPPORT.donateOptions.length > 1 && (
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            Prefer{' '}
+            {SUPPORT.donateOptions.slice(1).map((opt, i) => (
+              <span key={opt.label}>
+                {i > 0 && ' or '}
+                <a
+                  href={opt.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="font-medium underline decoration-slate-300 underline-offset-2 hover:text-slate-700 dark:decoration-slate-600 dark:hover:text-slate-200"
+                >
+                  {opt.label}
+                </a>
+              </span>
+            ))}
+            ?
+          </p>
+        )}
         <div className="mt-4 flex flex-col gap-2">
-          <Btn size="sm" variant="primary" onClick={onProceed} data-proceed className="w-full">
-            <Printer className="h-3.5 w-3.5" /> Continue to print
-          </Btn>
-          <button
-            type="button"
+          <Btn
+            size="sm"
+            variant="primary"
             onClick={onProceed}
-            className="text-xs font-medium text-slate-500 underline decoration-slate-300 underline-offset-2 hover:text-slate-700 dark:text-slate-400 dark:decoration-slate-600"
+            data-proceed
+            className="w-full"
+            disabled={remaining > 0}
           >
-            Skip — print without supporting
-          </button>
+            <Printer className="h-3.5 w-3.5" />{' '}
+            {remaining > 0 ? `Continue to print (${remaining}s)` : 'Continue to print'}
+          </Btn>
         </div>
         <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
-          Printing continues regardless. Support is voluntary, never required.
+          Contributions keep this tool free for every school.
         </p>
       </div>
     </div>
