@@ -58,6 +58,7 @@ export default function PreviewStep({
   onSwitchEmp: (name: string) => void;
 }) {
   const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
   const warns = issues.filter((i) => i.level === 'warning');
   const complete = days.filter((d) => d.hasPunch && !d.incomplete).length;
   const under = totalUndertime(days, info.officialHours);
@@ -71,8 +72,11 @@ export default function PreviewStep({
 
   const run = async (label: string, fn: () => void | Promise<void>) => {
     setBusy(label);
+    setError('');
     try {
       await fn();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Export failed — please try again.');
     } finally {
       setBusy('');
     }
@@ -190,7 +194,7 @@ export default function PreviewStep({
             'Zipping…'
           ) : (
             <>
-              <Archive className="h-4 w-4" /> ZIP
+              <Archive className="h-4 w-4" /> PDF ZIP
             </>
           )}
         </Btn>
@@ -210,8 +214,13 @@ export default function PreviewStep({
       </div>
 
       <p className="mt-3 flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-400">
-        <Download className="h-3 w-3" /> Generated locally with SheetJS & JSZip · No network request
+        <Download className="h-3 w-3" /> Excel via SheetJS · PDFs generated on-device · ZIP via JSZip · No network request
       </p>
+      {error && (
+        <p role="alert" className="mt-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/40 dark:bg-red-950/30 dark:text-red-200">
+          Export failed: {error}
+        </p>
+      )}
     </Card>
   );
 }

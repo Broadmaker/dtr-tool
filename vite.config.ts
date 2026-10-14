@@ -47,7 +47,9 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ['react', 'react-dom', 'lucide-react'],
-    exclude: ['xlsx', 'jszip'],
+    // jszip stays lazy (dynamic import) but IS pre-bundled so dev serves it
+    // with a proper `default` export. xlsx stays excluded (it works as-is).
+    include: ['react', 'react-dom', 'lucide-react', 'jszip'],
+    exclude: ['xlsx'],
   },
 })

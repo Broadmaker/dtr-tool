@@ -1,4 +1,5 @@
 // Client-side exports: XLSX workbook — faithful to dtr-sample.pdf
+import type JSZip from 'jszip';
 import type { EmployeeInfo, HolidayEntry, LeaveEntry, ResolvedDay } from './types';
 import { monthName } from './dateUtils';
 import { totalUndertime, undertimeForDay } from './rules';
@@ -36,9 +37,48 @@ function dayLabel(d: ResolvedDay): string {
   return String(d.dayOfMonth);
 }
 
+const SHEET_NAME_MAX = 31;
+
+/**
+ * Excel sheet names: max 31 chars, unique case-insensitively (Excel itself
+ * rejects `DTR` + `dtr`). Biometric files often contain duplicate display
+ * names, so disambiguate with ` (2)`, ` (3)`, … — SheetJS throws
+ * `Worksheet with name … already exists!` on duplicates and the whole export
+ * dies with no file at all.
+ */
+export function uniqueSheetName(raw: string, used: Set<string>): string {
+  const clean = (raw || 'DTR').replace(/[\\/?*[\]:]/g, '').slice(0, 28) || 'DTR';
+  let name = clean;
+  let n = 2;
+  while (used.has(name.toLowerCase())) {
+    const suffix = ` (${n})`;
+    name = `${clean.slice(0, SHEET_NAME_MAX - suffix.length)}${suffix}`;
+    n += 1;
+  }
+  used.add(name.toLowerCase());
+  return name;
+}
+
+/** ZIP entries: same-name employees would silently overwrite each other. */
+export function uniqueZipName(raw: string, used: Set<string>): string {
+  const fallback = raw || 'DTR.xlsx';
+  let name = fallback;
+  let n = 2;
+  while (used.has(name.toLowerCase())) {
+    const dot = fallback.lastIndexOf('.');
+    const stem = dot > 0 ? fallback.slice(0, dot) : fallback;
+    const ext = dot > 0 ? fallback.slice(dot) : '';
+    name = `${stem} (${n})${ext}`;
+    n += 1;
+  }
+  used.add(name.toLowerCase());
+  return name;
+}
+
 export async function buildBatchWorkbook(bundles: ExportBundle[]) {
   const XLSX = await import('xlsx');
   const wb = XLSX.utils.book_new();
+  const usedNames = new Set<string>();
   for (const b of bundles) {
     const capMonth = (() => {
       const up = monthName(b.month);
@@ -93,8 +133,7 @@ export async function buildBatchWorkbook(bundles: ExportBundle[]) {
       { s: { r: 0, c: 0 }, e: { r: 0, c: 6 } },
       { s: { r: 1, c: 0 }, e: { r: 1, c: 6 } },
     ];
-    const safe = (b.info.name || 'DTR').replace(/[\\/?*[\]:]/g, '').slice(0, 28) || 'DTR';
-    XLSX.utils.book_append_sheet(wb, ws, safe);
+    XLSX.utils.book_append_sheet(wb, ws, uniqueSheetName(b.info.name || 'DTR', usedNames));
   }
   return wb;
 }
@@ -105,15 +144,51 @@ export async function downloadXlsx(bundles: ExportBundle[], filename: string) {
   XLSX.writeFile(wb, filename);
 }
 
+/**
+ * jszip ships as pure CJS (`module.exports = JSZip`), so the shape of
+ * `await import('jszip')` depends on the bundler's interop: `{ default }`
+ * under Node, a getter-wrapped namespace in dev, or a raw chunk namespace
+ * with the constructor under an arbitrary named export in the prod build
+ * (which has no `default` at all). Scan for the constructor by its prototype
+ * instead of assuming one shape — otherwise `new JSZip()` blows up with
+ * "JSZip is not a constructor" and the whole ZIP dies with no file.
+ */
+function isJSZipCtor(v: unknown): v is typeof JSZip {
+  if (typeof v !== 'function') return false;
+  const proto = (v as { prototype?: { file?: unknown; generateAsync?: unknown } }).prototype;
+  return typeof proto?.file === 'function' && typeof proto?.generateAsync === 'function';
+}
+
+export async function loadJSZip(): Promise<typeof JSZip> {
+  const mod = (await import('jszip')) as unknown as Record<string, unknown>;
+  const first: unknown[] = [mod.default, ...Object.values(mod)];
+  for (const c of first) if (isJSZipCtor(c)) return c;
+  for (const c of first) {
+    if (c && (typeof c === 'object' || typeof c === 'function')) {
+      for (const v of Object.values(c as Record<string, unknown>)) {
+        if (isJSZipCtor(v)) return v;
+      }
+    }
+  }
+  // Dev-server fallback: jszip is excluded from pre-bundling, so dev serves
+  // the raw UMD build, which assigns itself to the global instead of
+  // exporting anything (empty module namespace, no `default`).
+  const fromGlobal = (globalThis as Record<string, unknown>).JSZip;
+  if (isJSZipCtor(fromGlobal)) return fromGlobal;
+  throw new Error('Could not load the ZIP engine. Please reload the app and try again.');
+}
+
 export async function downloadZip(bundles: ExportBundle[], filename: string, fileBase: string) {
-  const XLSX = await import('xlsx');
-  const { default: JSZip } = await import('jszip');
-  const zip = new JSZip();
+  const JSZipCtor = await loadJSZip();
+  const { bundleToPdfBytes } = await import('./pdf');
+  const zip = new JSZipCtor();
+  const usedFiles = new Set<string>();
   for (const b of bundles) {
-    const wb = await buildBatchWorkbook([b]);
-    const buf: ArrayBuffer = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+    // Print-ready PDF per employee (replaces the old per-employee .xlsx files —
+    // batch Excel stays available via the Excel export button).
+    const buf = await bundleToPdfBytes(b);
     const safe = (b.info.name || 'DTR').replace(/[\\/?*[\]:]/g, '_').slice(0, 60) || 'DTR';
-    zip.file(`${fileBase}_${safe}.xlsx`, buf);
+    zip.file(uniqueZipName(`${fileBase}_${safe}.pdf`, usedFiles), buf);
   }
   const blob = await zip.generateAsync({ type: 'blob' });
   const url = URL.createObjectURL(blob);
