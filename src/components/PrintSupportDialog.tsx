@@ -6,8 +6,8 @@ import { Btn } from './ui';
 
 /**
  * WinRAR-style support reminder: shown on every print, never blocking.
- * Every dismissal path (Continue, Skip, Esc, backdrop) proceeds to print —
- * the QR is an invitation, not a gate. Free forever.
+ * Only Continue and Esc proceed to print — backdrop clicks are ignored so the
+ * pause holds attention. The QR is an invitation, not a gate. Free forever.
  */
 export default function PrintSupportDialog({
   title,
@@ -19,7 +19,8 @@ export default function PrintSupportDialog({
   const boxRef = useRef<HTMLDivElement>(null);
   const prevFocus = useRef<Element | null>(null);
   const [expanded, setExpanded] = useState(false);
-  // Shareware-style beat: the button unlocks after a short pause.
+  // Shareware-style beat: the button unlocks after a short pause. The wait is
+  // intentionally unlabeled so it reads as a support ask, not a timer to sit out.
   const [remaining, setRemaining] = useState(5);
 
   useEffect(() => {
@@ -50,7 +51,6 @@ export default function PrintSupportDialog({
   return (
     <div
       className="fixed inset-0 z-[60] grid place-items-center bg-slate-950/50 p-4"
-      onClick={onProceed}
     >
       <div
         ref={boxRef}
@@ -142,8 +142,7 @@ export default function PrintSupportDialog({
             className="w-full"
             disabled={remaining > 0}
           >
-            <Printer className="h-3.5 w-3.5" />{' '}
-            {remaining > 0 ? `Continue to print (${remaining}s)` : 'Continue to print'}
+            <Printer className="h-3.5 w-3.5" /> Continue to print
           </Btn>
         </div>
         <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
