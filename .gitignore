@@ -25,3 +25,6 @@ DTR_Excel_Templates/
 *.njsproj
 *.sln
 *.sw?
+
+# Wrangler local state
+.wrangler/

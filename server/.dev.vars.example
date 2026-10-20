@@ -1,0 +1,8 @@
+# Copy to .dev.vars (never commit it). Values here override wrangler.jsonc
+# for local `pnpm dev` only.
+BETTER_AUTH_SECRET=replace-with-openssl-rand-base64-32
+BETTER_AUTH_URL=http://localhost:8787
+APP_ORIGIN=http://localhost:5173
+# Optional Google OAuth. Leave both empty to disable Google sign-in.
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
