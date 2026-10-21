@@ -47,6 +47,7 @@ type Route = { page: Page; schoolId?: string };
 type Props = {
   onExit: () => void;
   onAdminChange: (value: boolean) => void;
+  onOpenWorkspace: () => void;
 };
 
 const PAGE_SIZE = 20;
@@ -1272,7 +1273,11 @@ function ActivityPage({ refreshKey }: { refreshKey: number }) {
   );
 }
 
-export default function AdminConsole({ onExit, onAdminChange }: Props) {
+export default function AdminConsole({
+  onExit,
+  onAdminChange,
+  onOpenWorkspace,
+}: Props) {
   const [booting, setBooting] = useState(true);
   const [session, setSession] = useState<CloudSession | null>(null);
   const [email, setEmail] = useState('');
@@ -1503,6 +1508,9 @@ export default function AdminConsole({ onExit, onAdminChange }: Props) {
               </p>
             </div>
           </div>
+          <Btn variant="soft" size="sm" className="w-full" onClick={onOpenWorkspace}>
+            <School className="h-3.5 w-3.5" /> Open workspace
+          </Btn>
           <Btn
             variant="soft"
             size="sm"
@@ -1528,6 +1536,15 @@ export default function AdminConsole({ onExit, onAdminChange }: Props) {
               <p className="text-sm font-semibold">DTR Admin</p>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">System console</p>
             </div>
+            <Btn
+              size="xs"
+              variant="soft"
+              onClick={onOpenWorkspace}
+              aria-label="Open school workspace"
+              title="Open school workspace"
+            >
+              <School className="h-3.5 w-3.5" />
+            </Btn>
             <Btn size="xs" variant="soft" onClick={refresh} disabled={overviewLoading}>
               <RefreshCw className={`h-3.5 w-3.5 ${overviewLoading ? 'animate-spin' : ''}`} />
             </Btn>
@@ -1574,6 +1591,9 @@ export default function AdminConsole({ onExit, onAdminChange }: Props) {
               <h1 className="truncate text-lg font-semibold tracking-tight">{meta.title}</h1>
             </div>
             <div className="ml-auto flex items-center gap-2">
+              <Btn size="sm" variant="soft" onClick={onOpenWorkspace}>
+                <School className="h-3.5 w-3.5" /> Open workspace
+              </Btn>
               <Btn size="sm" variant="soft" onClick={refresh} disabled={overviewLoading}>
                 <RefreshCw className={`h-3.5 w-3.5 ${overviewLoading ? 'animate-spin' : ''}`} />
                 Refresh

@@ -15,6 +15,9 @@ dist-ssr
 # Local sample templates (real school data — never commit)
 DTR_Excel_Templates/
 
+# Local official school-list source
+ListofSchool.xlsx
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -45,6 +45,7 @@ import { buildBundles } from './lib/bundles';
 import {
   createDtrPeriod,
   createEmployee,
+  getSession,
   listDtrPeriods,
   listEmployees,
   saveDtrDays,
@@ -148,6 +149,11 @@ export default function App() {
     setWorkspaceRoute(true);
     window.location.hash = '#/workspace';
   }, []);
+  const openWorkspaceFromAdmin = useCallback(() => {
+    setAdminRoute(false);
+    setWorkspaceRoute(true);
+    window.location.hash = '#/workspace/admin';
+  }, []);
   const handleAdminChange = useCallback((value: boolean) => {
     setIsAdmin(value);
     try {
@@ -165,11 +171,24 @@ export default function App() {
     setAdminRoute(false);
     window.location.hash = '';
   }, []);
+  const openCloud = useCallback(() => {
+    if (isAdmin) openAdmin();
+    else openWorkspace();
+  }, [isAdmin, openAdmin, openWorkspace]);
   // WinRAR-style support reminder: set on every print click, cleared when
   // the dialog resolves. Printing always proceeds — the dialog never gates.
   const [printPrompt, setPrintPrompt] = useState<null | { kind: 'single' | 'batch' }>(null);
 
   useEffect(() => { applyTheme(theme); }, [theme]);
+  useEffect(() => {
+    let active = true;
+    void getSession().then((session) => {
+      if (active) handleAdminChange(session?.isSystemAdmin ?? false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [handleAdminChange]);
   useEffect(() => {
     const onHash = () => {
       setAdminRoute(readAdminRoute());
@@ -636,7 +655,11 @@ export default function App() {
           </div>
         }
       >
-        <AdminConsole onExit={closeAdmin} onAdminChange={handleAdminChange} />
+        <AdminConsole
+          onExit={closeAdmin}
+          onAdminChange={handleAdminChange}
+          onOpenWorkspace={openWorkspaceFromAdmin}
+        />
       </Suspense>
     );
   }
@@ -682,7 +705,7 @@ export default function App() {
         onClear={parsed ? clearAll : null}
         onInstall={() => deferredPrompt?.prompt()}
         canInstall={!!deferredPrompt}
-        onCloud={openWorkspace}
+        onCloud={openCloud}
         onAdmin={isAdmin ? openAdmin : null}
       />
       <Page>

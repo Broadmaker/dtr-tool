@@ -343,6 +343,7 @@ export default function Workspace({
     );
   }, [catalog, catalogSearch]);
   const activeTab = TABS.find((item) => item.id === tab) ?? TABS[0];
+  const adminWorkspace = window.location.hash.startsWith('#/workspace/admin');
 
   useEffect(() => {
     try {
@@ -400,6 +401,12 @@ export default function Workspace({
     getSession()
       .then((session) => {
         if (!active) return;
+        if (session?.isSystemAdmin && !adminWorkspace) {
+          setIsSystemAdmin(true);
+          onAdminChange(true);
+          onOpenAdmin();
+          return;
+        }
         setUser(session?.user ?? null);
         setIsSystemAdmin(session?.isSystemAdmin ?? false);
         onAdminChange(session?.isSystemAdmin ?? false);
@@ -415,7 +422,7 @@ export default function Workspace({
     return () => {
       active = false;
     };
-  }, [onAdminChange]);
+  }, [onAdminChange, onOpenAdmin, adminWorkspace]);
 
   const loadSchools = useCallback(async (): Promise<CloudSchool[]> => {
     setLoadingSchools(true);
@@ -654,6 +661,13 @@ export default function Workspace({
           ? await signIn(email.trim(), password)
           : await signUp(name.trim(), email.trim(), password);
       const session = await getSession();
+      if (session?.isSystemAdmin && !adminWorkspace) {
+        setIsSystemAdmin(true);
+        onAdminChange(true);
+        setPassword('');
+        onOpenAdmin();
+        return;
+      }
       setUser(session?.user ?? result.user);
       setIsSystemAdmin(session?.isSystemAdmin ?? false);
       onAdminChange(session?.isSystemAdmin ?? false);
