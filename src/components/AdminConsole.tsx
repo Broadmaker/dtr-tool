@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   Loader2,
   LogOut,
+  Plus,
   RefreshCw,
   School,
   Search,
@@ -20,6 +21,7 @@ import {
 } from 'lucide-react';
 import { Badge, Btn, Card, Field, SelectInput, TextInput } from './ui';
 import {
+  createSchool,
   getAdminOverview,
   getAdminSchoolDetail,
   getSession,
@@ -47,7 +49,7 @@ type Route = { page: Page; schoolId?: string };
 type Props = {
   onExit: () => void;
   onAdminChange: (value: boolean) => void;
-  onOpenWorkspace: () => void;
+  onOpenWorkspace: (schoolId: string) => void;
 };
 
 const PAGE_SIZE = 20;
@@ -71,7 +73,7 @@ const PAGE_META: Record<Page, { title: string; subtitle: string }> = {
   },
   schools: {
     title: 'Schools',
-    subtitle: 'Monitor every school workspace and its workload.',
+    subtitle: 'Create schools, review workload, and open school workspaces.',
   },
   activity: {
     title: 'Activity',
@@ -777,15 +779,24 @@ function RequestsPage({
 function SchoolsPage({
   refreshKey,
   onOpen,
+  onCreated,
 }: {
   refreshKey: number;
   onOpen: (schoolId: string) => void;
+  onCreated: (schoolId: string) => void;
 }) {
   const [schools, setSchools] = useState<AdminSchool[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
+  const [showCreate, setShowCreate] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
+  const [name, setName] = useState('');
+  const [schoolCode, setSchoolCode] = useState('');
+  const [division, setDivision] = useState('');
+  const [region, setRegion] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -802,6 +813,36 @@ function SchoolsPage({
   useEffect(() => {
     void load();
   }, [load, refreshKey]);
+
+  const submitCreate = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!name.trim()) {
+      setCreateError('School name is required.');
+      return;
+    }
+
+    setCreating(true);
+    setCreateError('');
+    try {
+      const created = await createSchool({
+        name: name.trim(),
+        schoolCode: schoolCode.trim() || null,
+        division: division.trim() || null,
+        region: region.trim() || null,
+      });
+      setName('');
+      setSchoolCode('');
+      setDivision('');
+      setRegion('');
+      setShowCreate(false);
+      await load();
+      onCreated(created.id);
+    } catch (cause) {
+      setCreateError(errorText(cause));
+    } finally {
+      setCreating(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -843,14 +884,89 @@ function SchoolsPage({
           </Field>
         </div>
         <Badge>{filtered.length.toLocaleString()} schools</Badge>
+        <Btn
+          size="sm"
+          variant="primary"
+          onClick={() => {
+            setShowCreate((value) => !value);
+            setCreateError('');
+          }}
+        >
+          <Plus className="h-3.5 w-3.5" /> New school
+        </Btn>
       </div>
+
+      {showCreate && (
+        <Card>
+          <form onSubmit={submitCreate} className="space-y-3">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">Create school</p>
+                <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                  Add a school workspace, then open it to manage its records.
+                </p>
+              </div>
+              <Btn type="button" size="xs" variant="ghost" onClick={() => setShowCreate(false)}>
+                Cancel
+              </Btn>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="School name">
+                <TextInput
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  placeholder="e.g. San Isidro Elementary School"
+                  required
+                />
+              </Field>
+              <Field label="School code">
+                <TextInput
+                  value={schoolCode}
+                  onChange={(event) => setSchoolCode(event.target.value)}
+                  placeholder="Optional"
+                />
+              </Field>
+              <Field label="Division">
+                <TextInput
+                  value={division}
+                  onChange={(event) => setDivision(event.target.value)}
+                  placeholder="Optional"
+                />
+              </Field>
+              <Field label="Region">
+                <TextInput
+                  value={region}
+                  onChange={(event) => setRegion(event.target.value)}
+                  placeholder="Optional"
+                />
+              </Field>
+            </div>
+            <ErrorNotice message={createError} />
+            <Btn type="submit" variant="primary" size="sm" disabled={creating}>
+              {creating ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Plus className="h-3.5 w-3.5" />
+              )}
+              Create school
+            </Btn>
+          </form>
+        </Card>
+      )}
 
       <ErrorNotice message={error} />
 
       {loading ? (
         <LoadingBlock label="Loading schools…" />
       ) : filtered.length === 0 ? (
-        <EmptyState title="No schools found" hint="Try a different search term." />
+        <EmptyState
+          title={search ? 'No schools found' : 'No schools yet'}
+          hint={
+            search
+              ? 'Try a different search term.'
+              : 'Create the first school workspace to get started.'
+          }
+        />
       ) : (
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900">
           <div className="overflow-x-auto">
@@ -957,11 +1073,13 @@ function SchoolDetailPage({
   refreshKey,
   onBack,
   onChanged,
+  onOpenWorkspace,
 }: {
   schoolId: string;
   refreshKey: number;
   onBack: () => void;
   onChanged: () => void;
+  onOpenWorkspace: (schoolId: string) => void;
 }) {
   const [detail, setDetail] = useState<AdminSchoolDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1030,6 +1148,14 @@ function SchoolDetailPage({
         <span className="text-xs text-slate-500 dark:text-slate-400">
           Updated {formatDate(school.updatedAt)}
         </span>
+        <Btn
+          size="sm"
+          variant="primary"
+          className="sm:ml-auto"
+          onClick={() => onOpenWorkspace(school.id)}
+        >
+          <School className="h-3.5 w-3.5" /> Open school workspace
+        </Btn>
       </div>
 
       <Card>
@@ -1506,11 +1632,11 @@ export default function AdminConsole({
               <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
                 {session.user.email}
               </p>
+              <div className="mt-1">
+                <Badge tone="brand">system admin</Badge>
+              </div>
             </div>
           </div>
-          <Btn variant="soft" size="sm" className="w-full" onClick={onOpenWorkspace}>
-            <School className="h-3.5 w-3.5" /> Open workspace
-          </Btn>
           <Btn
             variant="soft"
             size="sm"
@@ -1536,15 +1662,6 @@ export default function AdminConsole({
               <p className="text-sm font-semibold">DTR Admin</p>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">System console</p>
             </div>
-            <Btn
-              size="xs"
-              variant="soft"
-              onClick={onOpenWorkspace}
-              aria-label="Open school workspace"
-              title="Open school workspace"
-            >
-              <School className="h-3.5 w-3.5" />
-            </Btn>
             <Btn size="xs" variant="soft" onClick={refresh} disabled={overviewLoading}>
               <RefreshCw className={`h-3.5 w-3.5 ${overviewLoading ? 'animate-spin' : ''}`} />
             </Btn>
@@ -1588,12 +1705,12 @@ export default function AdminConsole({
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
                 System administration
               </p>
-              <h1 className="truncate text-lg font-semibold tracking-tight">{meta.title}</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="truncate text-lg font-semibold tracking-tight">{meta.title}</h1>
+                <Badge tone="brand">system admin</Badge>
+              </div>
             </div>
             <div className="ml-auto flex items-center gap-2">
-              <Btn size="sm" variant="soft" onClick={onOpenWorkspace}>
-                <School className="h-3.5 w-3.5" /> Open workspace
-              </Btn>
               <Btn size="sm" variant="soft" onClick={refresh} disabled={overviewLoading}>
                 <RefreshCw className={`h-3.5 w-3.5 ${overviewLoading ? 'animate-spin' : ''}`} />
                 Refresh
@@ -1611,7 +1728,10 @@ export default function AdminConsole({
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
                 System administration
               </p>
-              <h1 className="truncate text-lg font-semibold tracking-tight">{meta.title}</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="truncate text-lg font-semibold tracking-tight">{meta.title}</h1>
+                <Badge tone="brand">system admin</Badge>
+              </div>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{meta.subtitle}</p>
             </div>
           </div>
@@ -1624,6 +1744,7 @@ export default function AdminConsole({
                 window.location.hash = '#/admin/schools';
               }}
               onChanged={() => void loadOverview()}
+              onOpenWorkspace={onOpenWorkspace}
             />
           ) : route.page === 'requests' ? (
             <RequestsPage refreshKey={refreshKey} onChanged={() => void loadOverview()} />
@@ -1631,6 +1752,10 @@ export default function AdminConsole({
             <SchoolsPage
               refreshKey={refreshKey}
               onOpen={(schoolId) => {
+                window.location.hash = `#/admin/schools/${encodeURIComponent(schoolId)}`;
+              }}
+              onCreated={(schoolId) => {
+                void loadOverview();
                 window.location.hash = `#/admin/schools/${encodeURIComponent(schoolId)}`;
               }}
             />

@@ -33,7 +33,6 @@ import {
   createLeaveApplication,
   createLeaveType,
   createOfficialTravel,
-  createSchool,
   deleteHoliday,
   deleteOfficialTravel,
   getSession,
@@ -90,6 +89,22 @@ type Props = {
 
 const SCHOOL_KEY = 'dtr.cloud.school';
 const SIDEBAR_KEY = 'dtr.workspace.sidebar';
+const ADMIN_WORKSPACE_PREFIX = '#/workspace/admin';
+
+function readAdminSchoolId(): string {
+  const hash = window.location.hash.split('?')[0];
+  if (!hash.startsWith(ADMIN_WORKSPACE_PREFIX)) return '';
+  const id = hash
+    .slice(ADMIN_WORKSPACE_PREFIX.length)
+    .replace(/^\/+/, '')
+    .split('/')[0];
+  if (!id) return '';
+  try {
+    return decodeURIComponent(id);
+  } catch {
+    return '';
+  }
+}
 const WRITE_ROLES = ['owner', 'admin', 'ao', 'encoder', 'system_admin'];
 const APPROVER_ROLES = ['owner', 'admin', 'ao', 'system_admin'];
 
@@ -247,11 +262,6 @@ export default function Workspace({
   const [schools, setSchools] = useState<CloudSchool[]>([]);
   const [schoolId, setSchoolId] = useState('');
   const [loadingSchools, setLoadingSchools] = useState(false);
-  const [showSchoolForm, setShowSchoolForm] = useState(false);
-  const [schoolName, setSchoolName] = useState('');
-  const [schoolCode, setSchoolCode] = useState('');
-  const [division, setDivision] = useState('');
-  const [region, setRegion] = useState('');
   const [joinOpen, setJoinOpen] = useState(false);
   const [catalog, setCatalog] = useState<SchoolCatalogEntry[]>([]);
   const [catalogLoading, setCatalogLoading] = useState(false);
@@ -343,7 +353,8 @@ export default function Workspace({
     );
   }, [catalog, catalogSearch]);
   const activeTab = TABS.find((item) => item.id === tab) ?? TABS[0];
-  const adminWorkspace = window.location.hash.startsWith('#/workspace/admin');
+  const adminWorkspace = window.location.hash.startsWith(ADMIN_WORKSPACE_PREFIX);
+  const adminSchoolId = adminWorkspace ? readAdminSchoolId() : '';
 
   useEffect(() => {
     try {
@@ -352,6 +363,20 @@ export default function Workspace({
       // Storage can be unavailable in private mode.
     }
   }, [sidebarCollapsed]);
+
+  useEffect(() => {
+    const onHash = () => {
+      if (!isSystemAdmin) return;
+      if (
+        !window.location.hash.startsWith(ADMIN_WORKSPACE_PREFIX) ||
+        !readAdminSchoolId()
+      ) {
+        onOpenAdmin();
+      }
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, [isSystemAdmin, onOpenAdmin]);
 
   useEffect(() => {
     if (!accountOpen) return;
@@ -401,11 +426,13 @@ export default function Workspace({
     getSession()
       .then((session) => {
         if (!active) return;
-        if (session?.isSystemAdmin && !adminWorkspace) {
+        if (session?.isSystemAdmin) {
           setIsSystemAdmin(true);
           onAdminChange(true);
-          onOpenAdmin();
-          return;
+          if (!adminWorkspace || !adminSchoolId) {
+            onOpenAdmin();
+            return;
+          }
         }
         setUser(session?.user ?? null);
         setIsSystemAdmin(session?.isSystemAdmin ?? false);
@@ -422,14 +449,20 @@ export default function Workspace({
     return () => {
       active = false;
     };
-  }, [onAdminChange, onOpenAdmin, adminWorkspace]);
+  }, [onAdminChange, onOpenAdmin, adminWorkspace, adminSchoolId]);
 
   const loadSchools = useCallback(async (): Promise<CloudSchool[]> => {
     setLoadingSchools(true);
     try {
       const list = await listSchools();
       setSchools(list);
+      const targetAdminSchoolId = isSystemAdmin ? adminSchoolId : '';
+      if (targetAdminSchoolId && !list.some((item) => item.id === targetAdminSchoolId)) {
+        onOpenAdmin();
+        return list;
+      }
       setSchoolId((current) => {
+        if (targetAdminSchoolId) return targetAdminSchoolId;
         if (current && list.some((item) => item.id === current)) return current;
         let stored = '';
         try {
@@ -447,7 +480,7 @@ export default function Workspace({
     } finally {
       setLoadingSchools(false);
     }
-  }, [fail]);
+  }, [fail, isSystemAdmin, adminSchoolId, onOpenAdmin]);
 
   const loadOnboarding = useCallback(async () => {
     setMembershipsLoading(true);
@@ -661,12 +694,14 @@ export default function Workspace({
           ? await signIn(email.trim(), password)
           : await signUp(name.trim(), email.trim(), password);
       const session = await getSession();
-      if (session?.isSystemAdmin && !adminWorkspace) {
+      if (session?.isSystemAdmin) {
         setIsSystemAdmin(true);
         onAdminChange(true);
         setPassword('');
-        onOpenAdmin();
-        return;
+        if (!adminWorkspace || !adminSchoolId) {
+          onOpenAdmin();
+          return;
+        }
       }
       setUser(session?.user ?? result.user);
       setIsSystemAdmin(session?.isSystemAdmin ?? false);
@@ -706,39 +741,6 @@ export default function Workspace({
       // Storage can be unavailable in private mode.
     }
     setBusy(false);
-  };
-
-  const submitSchool = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!schoolName.trim()) {
-      setError('School name is required.');
-      return;
-    }
-    setBusy(true);
-    setError('');
-    setNotice('');
-    try {
-      const created = await createSchool({
-        name: schoolName.trim(),
-        schoolCode: schoolCode.trim() || null,
-        division: division.trim() || null,
-        region: region.trim() || null,
-      });
-      setSchools((current) =>
-        [...current, created].sort((a, b) => a.name.localeCompare(b.name)),
-      );
-      chooseSchool(created.id);
-      setSchoolName('');
-      setSchoolCode('');
-      setDivision('');
-      setRegion('');
-      setShowSchoolForm(false);
-      setNotice(`Created ${created.name}.`);
-    } catch (cause) {
-      fail(cause);
-    } finally {
-      setBusy(false);
-    }
   };
 
   const requestAccess = async (entry: SchoolCatalogEntry) => {
@@ -1125,51 +1127,6 @@ export default function Workspace({
       setBusy(false);
     }
   };
-
-  const schoolForm = (
-    <form onSubmit={submitSchool} className="grid gap-2 sm:grid-cols-2">
-      <Field label="School name">
-        <TextInput
-          value={schoolName}
-          onChange={(event) => setSchoolName(event.target.value)}
-          placeholder="San Isidro National High School"
-          required
-        />
-      </Field>
-      <Field label="School code" hint="optional">
-        <TextInput
-          value={schoolCode}
-          onChange={(event) => setSchoolCode(event.target.value)}
-          placeholder="123456"
-        />
-      </Field>
-      <Field label="Division" hint="optional">
-        <TextInput
-          value={division}
-          onChange={(event) => setDivision(event.target.value)}
-          placeholder="Division of…"
-        />
-      </Field>
-      <Field label="Region" hint="optional">
-        <TextInput
-          value={region}
-          onChange={(event) => setRegion(event.target.value)}
-          placeholder="Region IV-A"
-        />
-      </Field>
-      <div className="flex gap-2 sm:col-span-2">
-        <Btn type="submit" variant="primary" size="sm" disabled={busy}>
-          {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-          Create school
-        </Btn>
-        {schools.length > 0 && (
-          <Btn variant="ghost" size="sm" onClick={() => setShowSchoolForm(false)} disabled={busy}>
-            Cancel
-          </Btn>
-        )}
-      </div>
-    </form>
-  );
 
   const joinPanel = (
     <div className="space-y-5">
@@ -1815,61 +1772,47 @@ export default function Workspace({
                             </span>
                           )}
                         </div>
-                        <div className="flex flex-wrap gap-2 sm:ml-auto">
-                          <Btn
-                            size="sm"
-                            variant="ghost"
-                            className="!border-white/20 !bg-white/10 !text-white hover:!bg-white/20"
-                            onClick={() => {
-                              if (isSystemAdmin) {
-                                setShowSchoolForm((value) => !value);
-                              } else {
+                        {!isSystemAdmin && (
+                          <div className="flex flex-wrap gap-2 sm:ml-auto">
+                            <Btn
+                              size="sm"
+                              variant="ghost"
+                              className="!border-white/20 !bg-white/10 !text-white hover:!bg-white/20"
+                              onClick={() => {
                                 setJoinOpen(true);
                                 setError('');
                                 setNotice('');
-                              }
-                              setMobileNavOpen(false);
-                            }}
-                          >
-                            {isSystemAdmin ? (
-                              <Plus className="h-3.5 w-3.5" />
-                            ) : (
-                              <SchoolIcon className="h-3.5 w-3.5" />
-                            )}
-                            {isSystemAdmin ? 'New school' : 'Join school'}
-                          </Btn>
-                        </div>
+                                setMobileNavOpen(false);
+                              }}
+                            >
+                              <SchoolIcon className="h-3.5 w-3.5" /> Join school
+                            </Btn>
+                          </div>
+                        )}
                       </>
                     ) : (
                       <div className="flex flex-1 flex-wrap items-center gap-3">
                         <SchoolIcon className="h-5 w-5 text-white/70" />
                         <p className="text-sm text-white/80">
                           {isSystemAdmin
-                            ? 'Create your first school workspace'
+                            ? 'No school workspace selected'
                             : 'Join your school workspace'}
                         </p>
-                        <Btn
-                          size="sm"
-                          variant="ghost"
-                          className="!border-white/20 !bg-white/10 !text-white hover:!bg-white/20 sm:ml-auto"
-                          onClick={() => {
-                            if (isSystemAdmin) {
-                              setShowSchoolForm(true);
-                            } else {
+                        {!isSystemAdmin && (
+                          <Btn
+                            size="sm"
+                            variant="ghost"
+                            className="!border-white/20 !bg-white/10 !text-white hover:!bg-white/20 sm:ml-auto"
+                            onClick={() => {
                               setJoinOpen(true);
                               setError('');
                               setNotice('');
-                            }
-                            setMobileNavOpen(false);
-                          }}
-                        >
-                          {isSystemAdmin ? (
-                            <Plus className="h-3.5 w-3.5" />
-                          ) : (
-                            <SchoolIcon className="h-3.5 w-3.5" />
-                          )}
-                          {isSystemAdmin ? 'Create school' : 'Join school'}
-                        </Btn>
+                              setMobileNavOpen(false);
+                            }}
+                          >
+                            <SchoolIcon className="h-3.5 w-3.5" /> Join school
+                          </Btn>
+                        )}
                       </div>
                     )}
                   </div>
@@ -1898,12 +1841,6 @@ export default function Workspace({
                 </div>
               ) : (
                 <>
-                  {isSystemAdmin && (showSchoolForm || schools.length === 0) && (
-                    <div className="rounded-xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-900">
-                      {schoolForm}
-                    </div>
-                  )}
-
                   {showJoin ? (
                     <div className="rounded-xl border border-slate-200 bg-white px-4 py-4 dark:border-slate-800 dark:bg-slate-900">
                       {schools.length > 0 && (
@@ -1920,7 +1857,9 @@ export default function Workspace({
                     </div>
                   ) : !schoolId ? (
                     <div className="rounded-xl border border-dashed border-slate-300 px-5 py-12 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                      A school workspace keeps the roster, holidays, and DTRs together.
+                      {isSystemAdmin
+                        ? 'Open a school workspace from the Admin Console.'
+                        : 'A school workspace keeps the roster, holidays, and DTRs together.'}
                     </div>
                   ) : (
                     <div className="min-w-0 rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-6">

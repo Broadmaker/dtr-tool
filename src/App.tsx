@@ -149,10 +149,10 @@ export default function App() {
     setWorkspaceRoute(true);
     window.location.hash = '#/workspace';
   }, []);
-  const openWorkspaceFromAdmin = useCallback(() => {
+  const openSchoolWorkspace = useCallback((schoolId: string) => {
     setAdminRoute(false);
     setWorkspaceRoute(true);
-    window.location.hash = '#/workspace/admin';
+    window.location.hash = `#/workspace/admin/${encodeURIComponent(schoolId)}`;
   }, []);
   const handleAdminChange = useCallback((value: boolean) => {
     setIsAdmin(value);
@@ -658,7 +658,7 @@ export default function App() {
         <AdminConsole
           onExit={closeAdmin}
           onAdminChange={handleAdminChange}
-          onOpenWorkspace={openWorkspaceFromAdmin}
+          onOpenWorkspace={openSchoolWorkspace}
         />
       </Suspense>
     );

@@ -113,8 +113,9 @@ pnpm admin:grant:local --email you@example.com
 pnpm admin:grant:remote --email you@example.com
 ```
 
-The system admin can then create schools and approve pending AO requests from
-the Admin tab in the cloud workspace.
+The system admin stays in the Admin Console to create schools and approve
+pending AO requests. School workspaces are opened per school from the school
+detail page; the generic workspace is reserved for school members.
 
 ## Deploy
 
