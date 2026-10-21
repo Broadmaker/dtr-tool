@@ -3,6 +3,7 @@ import { memo, type ReactNode } from 'react';
 import {
   Check,
   Clock3,
+  Cloud,
   Coffee,
   Download,
   Laptop,
@@ -28,6 +29,8 @@ export const TopBar = memo(function TopBar({
   onClear,
   onInstall,
   canInstall,
+  onCloud,
+  onAdmin,
 }: {
   selected: number;
   theme: Theme;
@@ -35,6 +38,8 @@ export const TopBar = memo(function TopBar({
   onClear: (() => void) | null;
   onInstall: () => void;
   canInstall: boolean;
+  onCloud: () => void;
+  onAdmin: (() => void) | null;
 }) {
   const ThemeIcon = THEME_META[theme].icon;
   return (
@@ -66,6 +71,28 @@ export const TopBar = memo(function TopBar({
               <span className="hidden sm:inline">Install</span>
             </Btn>
           )}
+          {onAdmin && (
+            <Btn
+              size="sm"
+              variant="ghost"
+              onClick={onAdmin}
+              aria-label="Open admin console"
+              title="System administration"
+            >
+              <ShieldCheck className="h-3.5 w-3.5" />
+              <span className="hidden md:inline">Admin</span>
+            </Btn>
+          )}
+          <Btn
+            size="sm"
+            variant="ghost"
+            onClick={onCloud}
+            aria-label="Open cloud workspace"
+            title="Optional cloud workspace"
+          >
+            <Cloud className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Cloud</span>
+          </Btn>
           {SUPPORT.donateUrl && (
             <a
               href={SUPPORT.donateUrl}
@@ -105,14 +132,14 @@ export const PrivacyStrip = memo(function PrivacyStrip() {
         <span className="grid h-5 w-5 place-items-center rounded-full bg-emerald-500 text-white">
           <ShieldCheck className="h-3 w-3" />
         </span>
-        Local-only
+        Local-first
       </span>
       <span className="h-3 w-px bg-slate-200 dark:bg-slate-700" aria-hidden />
       <span className="inline-flex items-center gap-1">
         <Check className="h-3 w-3 text-emerald-600 dark:text-emerald-400" /> In-browser
       </span>
       <span className="inline-flex items-center gap-1">
-        <Check className="h-3 w-3 text-emerald-600 dark:text-emerald-400" /> No upload
+        <Check className="h-3 w-3 text-emerald-600 dark:text-emerald-400" /> No silent upload
       </span>
       <span className="inline-flex items-center gap-1">
         <Check className="h-3 w-3 text-emerald-600 dark:text-emerald-400" /> PWA offline

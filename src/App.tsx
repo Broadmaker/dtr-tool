@@ -6,6 +6,8 @@ const ConfigStep = lazy(() => import('./components/ConfigStep'));
 const AttendanceStep = lazy(() => import('./components/AttendanceStep'));
 const HolidayLeaveStep = lazy(() => import('./components/HolidayLeaveStep'));
 const PreviewStep = lazy(() => import('./components/PreviewStep'));
+const Workspace = lazy(() => import('./components/Workspace'));
+const AdminConsole = lazy(() => import('./components/AdminConsole'));
 import { Btn, Card } from './components/ui';
 import PersonPills from './components/PersonPills';
 import ConfirmDialog from './components/ConfirmDialog';
@@ -26,7 +28,7 @@ import {
 import type { ParseResult } from './lib/parser';
 import { autoMap, guessPeriod } from './lib/parser';
 import { parseFile, readGrid } from './lib/parseClient';
-import type { DayEntry, EmployeeInfo, LeaveEntry } from './lib/types';
+import type { DayEntry, EmployeeInfo, LeaveEntry, ResolvedDay } from './lib/types';
 import type { ColumnMap, SheetPreview } from './lib/columns';
 import { unmapped } from './lib/columns';
 import type { MappingPreset } from './lib/presets';
@@ -40,6 +42,15 @@ import type { Theme } from './lib/theme';
 import { clearUndoSnapshot, loadPrefs, loadUndoSnapshot, savePrefs, saveUndoSnapshot } from './lib/storage';
 import { buildFlashFillOverrides } from './lib/fill';
 import { buildBundles } from './lib/bundles';
+import {
+  createDtrPeriod,
+  createEmployee,
+  listDtrPeriods,
+  listEmployees,
+  saveDtrDays,
+  updateEmployee,
+} from './lib/api';
+import type { DtrDayInput } from './lib/api';
 import { useAttendanceReview } from './hooks/useAttendanceReview';
 import { useBeforeUnload } from './hooks/useBeforeUnload';
 import {
@@ -51,6 +62,23 @@ import type { SessionSnapshot } from './lib/session';
 
 type Step = 0 | 1 | 2 | 3 | 4 | 5;
 const STEP_LABELS = ['Upload', 'Employees', 'Period', 'Review', 'Holidays', 'Export'];
+const ADMIN_KEY = 'dtr.cloud.isAdmin';
+
+function readAdminFlag(): boolean {
+  try {
+    return localStorage.getItem(ADMIN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function readAdminRoute(): boolean {
+  return window.location.hash.startsWith('#/admin');
+}
+
+function readWorkspaceRoute(): boolean {
+  return window.location.hash.startsWith('#/workspace');
+}
 
 function StepFallback() {
   return (
@@ -59,6 +87,26 @@ function StepFallback() {
       <div className="mt-3 h-24 animate-pulse rounded-xl bg-slate-100 dark:bg-slate-800" />
     </div>
   );
+}
+
+function toCloudDay(day: ResolvedDay): DtrDayInput {
+  return {
+    workDate: day.date,
+    amIn: day.entry.amIn || null,
+    amOut: day.entry.amOut || null,
+    pmIn: day.entry.pmIn || null,
+    pmOut: day.entry.pmOut || null,
+    dayType:
+      day.kind === 'holiday'
+        ? 'holiday'
+        : day.kind === 'leave'
+          ? 'leave'
+          : day.kind === 'weekend'
+            ? 'weekend'
+            : 'work',
+    remarks: day.holiday?.description ?? day.leaveType ?? null,
+    source: day.entry.corrected ? 'correction' : 'import',
+  };
 }
 
 export default function App() {
@@ -88,11 +136,48 @@ export default function App() {
   const [vaultOpen, setVaultOpen] = useState(false);
   const [vaultBusy, setVaultBusy] = useState(false);
   const [vaultError, setVaultError] = useState('');
+  const [isAdmin, setIsAdmin] = useState(readAdminFlag);
+  const [adminRoute, setAdminRoute] = useState(readAdminRoute);
+  const [workspaceRoute, setWorkspaceRoute] = useState(readWorkspaceRoute);
+  const closeWorkspace = useCallback(() => {
+    setWorkspaceRoute(false);
+    window.location.hash = '';
+  }, []);
+  const openWorkspace = useCallback(() => {
+    setAdminRoute(false);
+    setWorkspaceRoute(true);
+    window.location.hash = '#/workspace';
+  }, []);
+  const handleAdminChange = useCallback((value: boolean) => {
+    setIsAdmin(value);
+    try {
+      localStorage.setItem(ADMIN_KEY, value ? '1' : '0');
+    } catch {
+      // Storage can be unavailable in private mode.
+    }
+  }, []);
+  const openAdmin = useCallback(() => {
+    setWorkspaceRoute(false);
+    setAdminRoute(true);
+    window.location.hash = '#/admin';
+  }, []);
+  const closeAdmin = useCallback(() => {
+    setAdminRoute(false);
+    window.location.hash = '';
+  }, []);
   // WinRAR-style support reminder: set on every print click, cleared when
   // the dialog resolves. Printing always proceeds — the dialog never gates.
   const [printPrompt, setPrintPrompt] = useState<null | { kind: 'single' | 'batch' }>(null);
 
   useEffect(() => { applyTheme(theme); }, [theme]);
+  useEffect(() => {
+    const onHash = () => {
+      setAdminRoute(readAdminRoute());
+      setWorkspaceRoute(readWorkspaceRoute());
+    };
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
+  }, []);
   useEffect(() => {
     const mq = window.matchMedia?.('(prefers-color-scheme: dark)');
     const onSchemeChange = () => {
@@ -375,6 +460,63 @@ export default function App() {
   // Stable for preview memoization; export/print actions call bundles() fresh.
   const bundleList = useMemo(() => bundles(), [bundles]);
 
+  const saveDtrToCloud = useCallback(async (schoolId: string) => {
+    const list = bundles();
+    if (!list.length) throw new Error('Select at least one employee first.');
+
+    const roster = await listEmployees(schoolId, { includeInactive: true });
+    const normalize = (value: string) => value.toLowerCase().replace(/\s+/g, ' ').trim();
+    let saved = 0;
+    let skipped = 0;
+    let created = 0;
+
+    for (const bundle of list) {
+      const full = normalize(bundle.info.name);
+      let employee =
+        roster.find((item) =>
+          normalize([item.firstName, item.middleName ?? '', item.lastName].join(' ')) === full,
+        ) ?? roster.find((item) => normalize(`${item.firstName} ${item.lastName}`) === full);
+
+      if (!employee) {
+        const parts = bundle.info.name.trim().split(/\s+/).filter(Boolean);
+        const firstName = parts[0] || 'Employee';
+        const lastName = parts.length > 1 ? parts[parts.length - 1] : firstName;
+        const middleName = parts.length > 2 ? parts.slice(1, -1).join(' ') : null;
+        employee = await createEmployee(schoolId, {
+          firstName,
+          lastName,
+          middleName,
+          position: bundle.info.position || null,
+        });
+        roster.push(employee);
+        created += 1;
+      } else if (!employee.isActive) {
+        const updated = await updateEmployee(schoolId, employee.id, { isActive: true });
+        employee = updated;
+        const index = roster.findIndex((item) => item.id === updated.id);
+        if (index >= 0) roster[index] = updated;
+      }
+
+      const periods = await listDtrPeriods(schoolId, {
+        year,
+        month,
+        employeeId: employee.id,
+      });
+      const period =
+        periods[0] ?? (await createDtrPeriod(schoolId, { employeeId: employee.id, year, month }));
+
+      if (period.status === 'approved' || period.status === 'locked') {
+        skipped += 1;
+        continue;
+      }
+
+      await saveDtrDays(schoolId, period.id, bundle.days.map(toCloudDay));
+      saved += 1;
+    }
+
+    return { saved, skipped, created };
+  }, [bundles, month, year]);
+
   const stamp = `${monthName(month).toLowerCase()}_${year}`;
   const base = (prefs.fileBase || 'DTR').replace(/[\\/?*[\]:]/g, '_').slice(0, 40) || 'DTR';
 
@@ -485,6 +627,52 @@ export default function App() {
     return true;
   };
 
+  if (adminRoute) {
+    return (
+      <Suspense
+        fallback={
+          <div className="grid min-h-dvh place-items-center bg-slate-50 text-sm text-slate-500 dark:bg-slate-950 dark:text-slate-400" role="status">
+            Loading admin console…
+          </div>
+        }
+      >
+        <AdminConsole onExit={closeAdmin} onAdminChange={handleAdminChange} />
+      </Suspense>
+    );
+  }
+
+  if (workspaceRoute) {
+    return (
+      <Suspense
+        fallback={
+          <div className="grid min-h-dvh place-items-center bg-slate-50 text-sm text-slate-500 dark:bg-slate-950 dark:text-slate-400" role="status">
+            Loading workspace…
+          </div>
+        }
+      >
+        <Workspace
+          onExit={closeWorkspace}
+          month={month}
+          year={year}
+          hasDtr={!!parsed}
+          onAdminChange={handleAdminChange}
+          onOpenAdmin={openAdmin}
+          onImportHolidays={(list) => {
+            setHolidays((current) => {
+              const byDate = new Map(current.map((holiday) => [holiday.date, holiday]));
+              for (const holiday of list) byDate.set(holiday.date, holiday);
+              return [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date));
+            });
+            flash(
+              `Imported ${list.length} holiday${list.length === 1 ? '' : 's'} into the current DTR.`,
+            );
+          }}
+          onSaveDtr={saveDtrToCloud}
+        />
+      </Suspense>
+    );
+  }
+
   return (
     <>
       <TopBar
@@ -494,6 +682,8 @@ export default function App() {
         onClear={parsed ? clearAll : null}
         onInstall={() => deferredPrompt?.prompt()}
         canInstall={!!deferredPrompt}
+        onCloud={openWorkspace}
+        onAdmin={isAdmin ? openAdmin : null}
       />
       <Page>
         <div className="flex justify-center sm:justify-start">
@@ -697,7 +887,7 @@ export default function App() {
                 <span className="text-xs text-slate-600 dark:text-slate-400">Reviewing {chosen.findIndex((e) => e.name === activeEmp) + 1} of {chosen.length}</span>
               )}
               <span className="ml-auto hidden items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 sm:inline-flex">
-                <ShieldCheck className="h-3.5 w-3.5" /> Local-only · nothing leaves this browser
+                <ShieldCheck className="h-3.5 w-3.5" /> Local-first · uploads only when you choose
               </span>
             </div>
           </>
@@ -705,7 +895,7 @@ export default function App() {
 
         {!parsed && (
           <p className="text-center text-xs text-slate-500 dark:text-slate-400">
-            Works offline after first load · No account required · Data stays on device
+            Works offline after first load · No account required · Data stays on device by default
           </p>
         )}
       </Page>

@@ -3,7 +3,17 @@ import { cors } from "hono/cors"
 import { HTTPException } from "hono/http-exception"
 import { createAuth } from "./auth"
 import type { Bindings } from "./env"
+import { isSystemAdmin } from "./lib/authz"
 import { requireSession, type AppEnv } from "./middleware/session"
+import admin from "./routes/admin"
+import auditLog from "./routes/audit"
+import dtr from "./routes/dtr"
+import employees from "./routes/employees"
+import holidays from "./routes/holidays"
+import leaves from "./routes/leaves"
+import onboarding from "./routes/onboarding"
+import schools from "./routes/schools"
+import travels from "./routes/travels"
 
 const app = new Hono<AppEnv>()
 
@@ -35,10 +45,25 @@ app.get("/health", async (c) => {
 
 app.all("/api/auth/*", (c) => createAuth(c.env).handler(c.req.raw))
 
-app.get("/api/me", requireSession, (c) => {
+app.get("/api/me", requireSession, async (c) => {
   const { user, session } = c.get("authSession")
-  return c.json({ user, session })
+  return c.json({ user, session, isSystemAdmin: await isSystemAdmin(c) })
 })
+
+app.route("/api/schools", schools)
+app.route("/api/schools", auditLog)
+app.route("/api/onboarding", onboarding)
+app.route("/api/admin", admin)
+
+/*
+ * Tenant-scoped collections. Each router reads :schoolId from the path and
+ * enforces membership before doing any work.
+ */
+app.route("/api/schools/:schoolId/employees", employees)
+app.route("/api/schools/:schoolId/holidays", holidays)
+app.route("/api/schools/:schoolId/travels", travels)
+app.route("/api/schools/:schoolId", leaves)
+app.route("/api/schools/:schoolId", dtr)
 
 app.notFound((c) => c.json({ error: "Not found" }, 404))
 

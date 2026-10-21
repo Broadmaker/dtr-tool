@@ -4,7 +4,26 @@ import { VitePWA } from 'vite-plugin-pwa'
 import { defineConfig } from 'vite'
 
 // https://vite.dev/config/
+const apiProxy = {
+  '/api': {
+    target: 'http://127.0.0.1:8787',
+    changeOrigin: true,
+    timeout: 10_000,
+    proxyTimeout: 10_000,
+  },
+}
+
 export default defineConfig({
+  server: {
+    port: 5173,
+    strictPort: true,
+    proxy: apiProxy,
+  },
+  preview: {
+    port: 4173,
+    strictPort: true,
+    proxy: apiProxy,
+  },
   plugins: [
     react(),
     tailwindcss(),
