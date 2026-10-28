@@ -62,7 +62,8 @@ secrets, migrations, and deployment):
 cd server
 pnpm install
 pnpm dev          # wrangler dev on http://localhost:8787 (Vite proxies /api)
-pnpm typecheck    # tsc --noEmit
+pnpm typecheck    # tsc --noEmit (app routes + tests)
+pnpm test         # vitest in workerd with a local D1
 ```
 
 The frontend talks to `/api` same-origin. Vite proxies that to `127.0.0.1:8787`

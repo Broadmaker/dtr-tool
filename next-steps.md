@@ -35,7 +35,7 @@ Last updated: after the admin Users/Activity expansion and the docs + CI refresh
 | Optional cloud workspace (auth, schools, roles) | ✅ done (`server/` + `Workspace.tsx`; local DTR flow unchanged) |
 | System admin console (users, schools, activity) | ✅ done (`AdminConsole.tsx`: bulk approval, filters, pagination, collapsible sidebar, toasts) |
 | Admin Users server-side filtering | ✅ done (`GET /api/admin/memberships` query + counts; debounced client fetch) |
-| Server typecheck in CI | ✅ done (`.github/workflows/ci.yml`) |
+| Server typecheck + tests in CI | ✅ done (`.github/workflows/ci.yml`; `@cloudflare/vitest-plugin` + local D1) |
 
 ---
 
@@ -206,9 +206,11 @@ accepts `status`, `role`, `schoolId`, `q`, `limit`, and `offset`, and returns
 `{ memberships, total, counts }`. `UsersPage` debounces search and fetches one
 page at a time; tab badges use the server counts.
 
-**API tests.** `server/` has no automated tests. Add route tests against a
-local D1 (approve/decline/suspend, role checks, school scoping, audit writes,
-activity filters) and wire them into CI alongside `pnpm typecheck`.
+**API tests.** ✅ started — `@cloudflare/vitest-plugin` runs `server/test/*`
+inside workerd against a migrated local D1. `test/admin.test.ts` covers
+system-admin auth, membership filters/pagination, approval + audit trail, and
+activity filters. Still to cover: schools/members, employees, holidays, leave,
+travels, and DTR routes (including tenant isolation).
 
 **Audit retention.** `audit_log` grows unbounded. Decide on a retention window
 or an export/prune job before it becomes a problem.
@@ -288,10 +290,17 @@ Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass -Force
 pnpm dev      # dev server
 pnpm build    # tsc -b && vite build → dist/
 pnpm lint     # oxlint
+pnpm test     # vitest (src only)
+
+cd server
+pnpm typecheck
+pnpm test     # vitest in workerd + local D1
 ```
 
-Verify every change with `pnpm exec tsc -b` **and** `pnpm exec oxlint` — the
-project is currently at zero errors and zero warnings; keep it there.
+Verify every change with `pnpm exec tsc -b`, `pnpm exec oxlint`, and both test
+suites — keep the build at zero errors. Oxlint currently reports a handful of
+pre-existing `react(set-state-in-effect)` / fast-refresh warnings; don't add
+new ones.
 
 **Quirk:** in PowerShell, `pnpm build` can report exit code 1 even on success —
 the Vite chunk-size *warning* goes to stderr and PowerShell surfaces it as a

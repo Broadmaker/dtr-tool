@@ -54,6 +54,22 @@ Generate a secret with:
 openssl rand -base64 32
 ```
 
+## Tests
+
+```powershell
+pnpm test        # vitest run (Workers runtime + local D1)
+pnpm test:watch
+```
+
+Tests run inside `workerd` via `@cloudflare/vitest-plugin` and use the D1 binding
+from `wrangler.jsonc`. `test/apply-migrations.ts` applies `migrations/*.sql`
+before the suite, so the schema always matches production. Auth is exercised
+through real Better Auth sign-up cookies; tests reset their tables per case.
+
+Current coverage lives in `test/admin.test.ts` (system-admin auth, membership
+filters/pagination, approval audit trail, activity filters). Add route suites
+beside it as more areas get tests.
+
 ## Endpoints
 
 | Method | Path | Notes |

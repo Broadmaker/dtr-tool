@@ -35,6 +35,10 @@ jobs:
         working-directory: server
         run: pnpm typecheck
 
+      - name: Test server
+        working-directory: server
+        run: pnpm test
+
       - name: Lint
         run: pnpm exec oxlint
 
