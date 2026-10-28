@@ -14,7 +14,9 @@
 ## 1. Where we are today
 
 - Browser-first, privacy-first: Upload XLSX → Parse → Configure → Preview → Print/XLSX/ZIP → discard.
-- No backend, no auth, no network calls for attendance. Static `dist/`, PWA offline-capable.
+- Core flow: no auth, no network calls for attendance. Static `dist/`, PWA offline-capable.
+- Optional cloud workspace (Worker + D1 + Better Auth) for schools, saved DTRs,
+  leave/travel, and the admin console — opt-in only.
 - Voluntary donations only (`src/lib/support.ts`, `PrintSupportDialog`) — never gating.
 - Full feature inventory for gating analysis: see `src/App.tsx` (steps 0–5),
   `src/lib/export.ts`, `src/components/PreviewStep.tsx`, `src/lib/presets.ts`,

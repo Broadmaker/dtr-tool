@@ -7,7 +7,7 @@ Companion to `set-up.md` (the design brief) and `README.md` (current state).
 This file tracks **what to build next, in priority order**, with enough
 technical detail that either of us can pick an item up cold.
 
-Last updated: after saved importer presets + neutral footer/support dialog.
+Last updated: after the admin Users/Activity expansion and the docs + CI refresh.
 
 ---
 
@@ -32,6 +32,9 @@ Last updated: after saved importer presets + neutral footer/support dialog.
 | CSC form fidelity vs real office form | ✅ verified — item 2 |
 | PH holiday preset | ✅ done (`phHolidays.ts` + one-tap load in `HolidayLeaveStep`) |
 | Saved importer presets | ✅ done (`presets.ts`, auto-apply in `needMapping`, save/apply/delete in `ColumnMappingStep`) |
+| Optional cloud workspace (auth, schools, roles) | ✅ done (`server/` + `Workspace.tsx`; local DTR flow unchanged) |
+| System admin console (users, schools, activity) | ✅ done (`AdminConsole.tsx`: bulk approval, filters, pagination, collapsible sidebar, toasts) |
+| Server typecheck in CI | ✅ done (`.github/workflows/ci.yml`) |
 
 ---
 
@@ -192,6 +195,29 @@ The next upload from the same biometric machine re-prompts.
 
 ---
 
+## 5. Cloud workspace follow-ups (optional backend)
+
+> The local DTR flow stays the priority; these only matter once the cloud
+> workspace is in active use. Backend details live in `server/README.md`.
+
+**Server-side Users filtering.** `UsersPage` currently fetches every membership
+and filters/paginates in the browser. Move `role`, `schoolId`, `q`, `status`,
+`limit`, and `offset` into `GET /api/admin/memberships` (mirroring the activity
+endpoint) so the console stays fast as membership grows.
+
+**API tests.** `server/` has no automated tests. Add route tests against a
+local D1 (approve/decline/suspend, role checks, school scoping, audit writes,
+activity filters) and wire them into CI alongside `pnpm typecheck`.
+
+**Audit retention.** `audit_log` grows unbounded. Decide on a retention window
+or an export/prune job before it becomes a problem.
+
+**Security pass.** Review rate limiting on auth and approval endpoints, confirm
+non-members still get `404` on every tenant route, and check that the Pages
+proxy does not forward unexpected headers.
+
+---
+
 ## Later — from `set-up.md` §22 / §23 (not scheduled)
 
 - Split/merged PDF output; a "one combined PDF" option
@@ -222,7 +248,8 @@ The next upload from the same biometric machine re-prompts.
 - `App.tsx` derived-data split — ✅ done (`useAttendanceReview` hook +
   pure `buildBundles()` in `src/lib/bundles.ts` with tests; orchestrator keeps
   raw state + actions only)
-- CI — ✅ done (`.github/workflows/ci.yml`: install → tsc → oxlint → vitest → build)
+- CI — ✅ done (`.github/workflows/ci.yml`: install → server install → app + server
+  tsc → oxlint → vitest → build)
 - WinRAR-style print reminder — ✅ done (`PrintSupportDialog` with donation
   QR on every print click; every dismissal prints; auto-skipped when
   `donateUrl` is empty; swap in the PayMongo link when ready)
@@ -277,6 +304,9 @@ native-command error. Check the log for `✓ built`. Raising
 1. ~~**Batch print**~~ ✅ done.
 2. ~~**PH holiday preset**~~ ✅ done.
 3. ~~**Saved importer presets**~~ ✅ done.
-4. **CSC fidelity** — highest impact overall, but blocked until the real blank
-   form and a filled example are available.
+4. ~~**CSC fidelity**~~ ✅ verified by the AO.
+5. **Cloud follow-ups** — server-side Users filtering, API tests, then the
+   security pass (see §5).
+6. **Product backlog** — remaining items under *Later*; pick based on real AO
+   feedback rather than guessing.
 

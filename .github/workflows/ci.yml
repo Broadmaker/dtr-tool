@@ -18,11 +18,22 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            server/pnpm-lock.yaml
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Install server deps
+        working-directory: server
+        run: pnpm install --frozen-lockfile
+
       - name: Typecheck
         run: pnpm exec tsc -b
+
+      - name: Typecheck server
+        working-directory: server
+        run: pnpm typecheck
 
       - name: Lint
         run: pnpm exec oxlint

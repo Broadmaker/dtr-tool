@@ -33,7 +33,7 @@ export default defineConfig({
       manifest: {
         name: 'DTR Tool — Privacy-First CSC DTR Generator',
         short_name: 'DTR Tool',
-        description: 'Turn biometric exports into CSC-ready DTRs. 100% in-browser — no upload, no database.',
+        description: 'Turn biometric exports into CSC-ready DTRs. Core flow runs locally; cloud sync is optional.',
         theme_color: '#1748b5',
         background_color: '#f1f5f9',
         display: 'standalone',
