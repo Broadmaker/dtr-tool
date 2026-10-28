@@ -170,27 +170,67 @@ admin.get("/overview", async (c) => {
 
 const activityQuery = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
   before: z.coerce.number().int().optional(),
+  q: z.string().trim().max(120).optional(),
+  action: z.string().trim().max(80).optional(),
+  schoolId: z.string().trim().max(120).optional(),
+  from: z.coerce.number().int().optional(),
+  to: z.coerce.number().int().optional(),
 })
 
 admin.get("/activity", async (c) => {
   const query = readQuery(c, activityQuery)
-  let sql = ACTIVITY_SELECT
-  const binds: number[] = []
+  const conditions: string[] = []
+  const binds: (string | number)[] = []
 
   if (query.before) {
-    sql += ` WHERE a.created_at < ?`
+    conditions.push(`a.created_at < ?`)
     binds.push(query.before)
   }
+  if (query.from) {
+    conditions.push(`a.created_at >= ?`)
+    binds.push(query.from)
+  }
+  if (query.to) {
+    conditions.push(`a.created_at <= ?`)
+    binds.push(query.to)
+  }
+  if (query.schoolId) {
+    conditions.push(`a.school_id = ?`)
+    binds.push(query.schoolId)
+  }
+  if (query.action) {
+    conditions.push(`a.action LIKE ? ESCAPE '\\'`)
+    binds.push(`${query.action.replace(/[%_\\]/g, '\\$&')}%`)
+  }
+  if (query.q) {
+    const like = `%${query.q}%`
+    conditions.push(
+      `(a.action LIKE ? OR a.entity_type LIKE ? OR s.name LIKE ? OR u.name LIKE ? OR u.email LIKE ?)`,
+    )
+    binds.push(like, like, like, like, like)
+  }
 
-  sql += ` ORDER BY a.created_at DESC LIMIT ?`
-  binds.push(query.limit)
+  const where = conditions.length ? ` WHERE ${conditions.join(' AND ')}` : ''
 
-  const { results } = await c.env.DB.prepare(sql)
-    .bind(...binds)
-    .all<AdminActivityRow>()
+  const [count, rows] = await Promise.all([
+    c.env.DB.prepare(
+      `SELECT COUNT(*) AS total
+       FROM audit_log a
+       LEFT JOIN schools s ON s.id = a.school_id
+       LEFT JOIN user u ON u.id = a.actor_user_id${where}`,
+    )
+      .bind(...binds)
+      .first<{ total: number }>(),
+    c.env.DB.prepare(
+      `${ACTIVITY_SELECT}${where} ORDER BY a.created_at DESC LIMIT ? OFFSET ?`,
+    )
+      .bind(...binds, query.limit, query.offset)
+      .all<AdminActivityRow>(),
+  ])
 
-  return c.json({ entries: parseActivity(results) })
+  return c.json({ entries: parseActivity(rows.results), total: count?.total ?? 0 })
 })
 
 admin.get("/memberships", async (c) => {

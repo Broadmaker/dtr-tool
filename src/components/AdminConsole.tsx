@@ -3,6 +3,7 @@ import {
   Activity,
   AlertTriangle,
   ArrowLeft,
+  BadgeCheck,
   CalendarDays,
   Check,
   Clock3,
@@ -10,6 +11,8 @@ import {
   LayoutDashboard,
   Loader2,
   LogOut,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   RefreshCw,
   School,
@@ -26,6 +29,7 @@ import {
   getAdminSchoolDetail,
   getSession,
   listAdminActivity,
+  listAdminActivityPage,
   listAdminMemberships,
   listAdminSchools,
   signIn,
@@ -42,8 +46,9 @@ import type {
   CloudMembershipStatus,
   CloudSession,
 } from '../lib/api';
+import { roleLabel, roleShortLabel } from '../lib/roles';
 
-type Page = 'overview' | 'requests' | 'schools' | 'activity';
+type Page = 'overview' | 'users' | 'schools' | 'activity';
 type Route = { page: Page; schoolId?: string };
 
 type Props = {
@@ -53,11 +58,30 @@ type Props = {
 };
 
 const PAGE_SIZE = 20;
-const ACTIVITY_LIMIT = 50;
+
+type ActivityRange = 'all' | '24h' | '7d' | '30d' | '90d';
+
+const ACTIVITY_RANGES: { id: ActivityRange; label: string; seconds?: number }[] = [
+  { id: 'all', label: 'All time' },
+  { id: '24h', label: 'Last 24 hours', seconds: 86_400 },
+  { id: '7d', label: 'Last 7 days', seconds: 604_800 },
+  { id: '30d', label: 'Last 30 days', seconds: 2_592_000 },
+  { id: '90d', label: 'Last 90 days', seconds: 7_776_000 },
+];
+
+const ACTIVITY_GROUPS: { id: string; label: string }[] = [
+  { id: 'school.', label: 'Schools' },
+  { id: 'member.', label: 'Members' },
+  { id: 'membership.', label: 'Access' },
+  { id: 'employee.', label: 'Employees' },
+  { id: 'holiday.', label: 'Holidays' },
+  { id: 'leave_', label: 'Leave' },
+  { id: 'dtr', label: 'DTR' },
+];
 
 const NAV: { id: Page; label: string; icon: typeof Users }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
-  { id: 'requests', label: 'Access requests', icon: UserCheck },
+  { id: 'users', label: 'Users', icon: UserCheck },
   { id: 'schools', label: 'Schools', icon: School },
   { id: 'activity', label: 'Activity', icon: Activity },
 ];
@@ -67,9 +91,9 @@ const PAGE_META: Record<Page, { title: string; subtitle: string }> = {
     title: 'Overview',
     subtitle: 'A live view of schools, access, and DTR activity.',
   },
-  requests: {
-    title: 'Access requests',
-    subtitle: 'Approve, decline, or suspend school workspace access.',
+  users: {
+    title: 'Users',
+    subtitle: 'Review access requests, roles, and school memberships.',
   },
   schools: {
     title: 'Schools',
@@ -120,9 +144,9 @@ function errorText(error: unknown): string {
 function readRoute(): Route {
   const parts = window.location.hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   const page = parts[1];
-  if (page === 'requests' || page === 'activity' || page === 'schools') {
+  if (page === 'users' || page === 'requests' || page === 'activity' || page === 'schools') {
     return {
-      page,
+      page: page === 'requests' ? 'users' : page,
       schoolId:
         page === 'schools' && parts[2] ? decodeURIComponent(parts[2]) : undefined,
     };
@@ -151,10 +175,133 @@ function initials(name: string): string {
     .join('');
 }
 
-function membershipTone(status: CloudMembershipStatus) {
-  if (status === 'active') return 'success' as const;
-  if (status === 'pending') return 'brand' as const;
-  return 'warn' as const;
+const ROLE_CLASSES: Record<string, string> = {
+  system_admin:
+    'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/50 dark:bg-violet-950/30 dark:text-violet-300',
+  owner:
+    'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300',
+  admin:
+    'border-brand-200 bg-brand-50 text-brand-700 dark:border-brand-900/50 dark:bg-brand-950/40 dark:text-sky-300',
+  ao:
+    'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/50 dark:bg-sky-950/40 dark:text-sky-300',
+  encoder:
+    'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
+  viewer:
+    'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
+};
+
+function roleMeta(role: string) {
+  return {
+    label: roleLabel(role),
+    short: roleShortLabel(role),
+    className: ROLE_CLASSES[role] ?? ROLE_CLASSES.viewer,
+  };
+}
+
+function RolePill({ role }: { role: string }) {
+  const meta = roleMeta(role);
+  const Icon = role === 'ao' ? BadgeCheck : role === 'system_admin' ? ShieldCheck : UserCheck;
+  return (
+    <span
+      title={meta.label}
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${meta.className}`}
+    >
+      <Icon className="h-3 w-3 shrink-0" aria-hidden />
+      {meta.label}
+    </span>
+  );
+}
+
+const USER_STATUS_TABS: { id: CloudMembershipStatus | 'all'; label: string }[] = [
+  { id: 'pending', label: 'Pending' },
+  { id: 'active', label: 'Active' },
+  { id: 'suspended', label: 'Suspended' },
+  { id: 'rejected', label: 'Declined' },
+  { id: 'all', label: 'All' },
+];
+
+const USER_ROLE_OPTIONS: { id: string; label: string }[] = [
+  { id: 'all', label: 'All roles' },
+  { id: 'ao', label: roleLabel('ao') },
+  { id: 'admin', label: roleLabel('admin') },
+  { id: 'owner', label: roleLabel('owner') },
+  { id: 'encoder', label: roleLabel('encoder') },
+  { id: 'viewer', label: roleLabel('viewer') },
+  { id: 'system_admin', label: roleLabel('system_admin') },
+];
+
+const STATUS_META: Record<
+  CloudMembershipStatus,
+  { label: string; dot: string; text: string }
+> = {
+  pending: {
+    label: 'Pending review',
+    dot: 'bg-amber-500',
+    text: 'text-amber-700 dark:text-amber-300',
+  },
+  active: { label: 'Active', dot: 'bg-emerald-500', text: 'text-emerald-700 dark:text-emerald-300' },
+  rejected: { label: 'Declined', dot: 'bg-rose-500', text: 'text-rose-700 dark:text-rose-300' },
+  suspended: {
+    label: 'Suspended',
+    dot: 'bg-slate-400',
+    text: 'text-slate-500 dark:text-slate-400',
+  },
+};
+
+function StatusIndicator({ status }: { status: CloudMembershipStatus }) {
+  const meta = STATUS_META[status];
+  return (
+    <span className={`inline-flex items-center gap-1.5 text-[11px] font-semibold ${meta.text}`}>
+      <span className="relative flex h-2 w-2">
+        {status === 'pending' && (
+          <span
+            className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-60 ${meta.dot}`}
+          />
+        )}
+        <span className={`relative inline-flex h-2 w-2 rounded-full ${meta.dot}`} />
+      </span>
+      {meta.label}
+    </span>
+  );
+}
+
+type ToastState = { id: number; tone: 'success' | 'error'; message: string };
+
+function AdminToast({ toast, onDismiss }: { toast: ToastState; onDismiss: () => void }) {
+  const success = toast.tone === 'success';
+  return (
+    <div className="pointer-events-none fixed inset-x-4 bottom-5 z-50 flex justify-center sm:inset-x-auto sm:right-6 sm:justify-end">
+      <div
+        role="status"
+        aria-live="polite"
+        className="pointer-events-auto flex w-full max-w-sm items-start gap-3 rounded-2xl border border-slate-200 bg-white p-3.5 shadow-xl dark:border-slate-700 dark:bg-slate-900"
+      >
+        <span
+          className={`grid h-8 w-8 shrink-0 place-items-center rounded-full ${
+            success
+              ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-950/50 dark:text-emerald-300'
+              : 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-300'
+          }`}
+        >
+          {success ? <Check className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[13px] font-semibold">{success ? 'Success' : 'Action failed'}</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-slate-600 dark:text-slate-300">
+            {toast.message}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onDismiss}
+          aria-label="Dismiss notification"
+          className="grid h-7 w-7 shrink-0 place-items-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
 }
 
 function dtrTone(status: string) {
@@ -369,15 +516,36 @@ function ActivityList({
 function MembershipCard({
   membership,
   busy,
+  selectable = false,
+  selected = false,
+  onToggle,
   onDecide,
 }: {
   membership: AdminMembership;
   busy: boolean;
+  selectable?: boolean;
+  selected?: boolean;
+  onToggle?: () => void;
   onDecide: (membership: AdminMembership, status: 'active' | 'rejected' | 'suspended') => void;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+    <div
+      className={`rounded-xl border p-3 transition-colors ${
+        selected
+          ? 'border-brand-300 bg-brand-50/40 dark:border-brand-800 dark:bg-brand-950/20'
+          : 'border-slate-200 dark:border-slate-800'
+      }`}
+    >
       <div className="flex flex-wrap items-start gap-2">
+        {selectable && (
+          <input
+            type="checkbox"
+            checked={selected}
+            onChange={onToggle}
+            aria-label={`Select ${membership.name}`}
+            className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded accent-brand-600"
+          />
+        )}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium">
             {membership.name}{' '}
@@ -385,13 +553,16 @@ function MembershipCard({
               {membership.email}
             </span>
           </p>
-          <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-            {membership.schoolName}
-            {membership.schoolCode ? ` · ${membership.schoolCode}` : ''} · {membership.role} ·{' '}
-            {formatDate(membership.createdAt)}
-          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+            <RolePill role={membership.role} />
+            <span className="truncate">
+              {membership.schoolName}
+              {membership.schoolCode ? ` · ${membership.schoolCode}` : ''} ·{' '}
+              {formatDate(membership.createdAt)}
+            </span>
+          </div>
         </div>
-        <Badge tone={membershipTone(membership.status)}>{membership.status}</Badge>
+        <StatusIndicator status={membership.status} />
       </div>
       <div className="mt-2 flex flex-wrap gap-1.5">
         {membership.status === 'pending' && (
@@ -445,18 +616,20 @@ function OverviewPage({
   error,
   refreshKey,
   onRefresh,
-  onOpenRequests,
+  onOpenUsers,
   onOpenActivity,
   onChanged,
+  onNotify,
 }: {
   overview: AdminOverview | null;
   loading: boolean;
   error: string;
   refreshKey: number;
   onRefresh: () => void;
-  onOpenRequests: () => void;
+  onOpenUsers: () => void;
   onOpenActivity: () => void;
   onChanged: () => void;
+  onNotify: (message: string, tone?: 'success' | 'error') => void;
 }) {
   const [pending, setPending] = useState<AdminMembership[]>([]);
   const [activity, setActivity] = useState<AdminActivityEntry[]>([]);
@@ -493,10 +666,21 @@ function OverviewPage({
     setFeedError('');
     try {
       await updateAdminMembership(membership.id, status);
+      const action =
+        status === 'active'
+          ? membership.status === 'pending'
+            ? 'Access approved'
+            : 'Access restored'
+          : status === 'suspended'
+            ? 'Access suspended'
+            : 'Access declined';
+      onNotify(`${action} for ${membership.name} (${roleMeta(membership.role).short}).`);
       await loadFeed();
       onChanged();
     } catch (cause) {
-      setFeedError(errorText(cause));
+      const message = errorText(cause);
+      setFeedError(message);
+      onNotify(message, 'error');
     } finally {
       setBusyId('');
     }
@@ -519,7 +703,7 @@ function OverviewPage({
             icon={UserCheck}
             tone="brand"
             hint="Click to review"
-            onClick={onOpenRequests}
+            onClick={onOpenUsers}
           />
           <StatCard
             label="Active members"
@@ -610,18 +794,18 @@ function OverviewPage({
         </Panel>
 
         <Panel
-          title="Access requests"
+          title="Pending users"
           hint="New members waiting for approval."
           action={
-            <Btn size="xs" variant="ghost" onClick={onOpenRequests}>
+            <Btn size="xs" variant="ghost" onClick={onOpenUsers}>
               View all
             </Btn>
           }
         >
           {feedLoading ? (
-            <LoadingBlock label="Loading requests…" />
+            <LoadingBlock label="Loading users…" />
           ) : pending.length === 0 ? (
-            <EmptyState title="No pending requests" hint="New AO requests will appear here." />
+            <EmptyState title="No pending users" hint="New AO requests will appear here." />
           ) : (
             <div className="space-y-2">
               {pending.slice(0, 5).map((membership) => (
@@ -661,17 +845,25 @@ function OverviewPage({
   );
 }
 
-function RequestsPage({
+function UsersPage({
   refreshKey,
   onChanged,
+  onNotify,
 }: {
   refreshKey: number;
   onChanged: () => void;
+  onNotify: (message: string, tone?: 'success' | 'error') => void;
 }) {
-  const [status, setStatus] = useState<CloudMembershipStatus | 'all'>('pending');
   const [rows, setRows] = useState<AdminMembership[]>([]);
+  const [schools, setSchools] = useState<AdminSchool[]>([]);
+  const [status, setStatus] = useState<CloudMembershipStatus | 'all'>('pending');
+  const [role, setRole] = useState('all');
+  const [schoolId, setSchoolId] = useState('all');
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
 
@@ -679,28 +871,72 @@ function RequestsPage({
     setLoading(true);
     setError('');
     try {
-      setRows(await listAdminMemberships(status === 'all' ? undefined : status));
+      const [memberships, nextSchools] = await Promise.all([
+        listAdminMemberships(),
+        listAdminSchools(),
+      ]);
+      setRows(memberships);
+      setSchools(nextSchools);
     } catch (cause) {
       setError(errorText(cause));
     } finally {
       setLoading(false);
     }
-  }, [status]);
+  }, []);
 
   useEffect(() => {
     void load();
   }, [load, refreshKey]);
 
-  const filtered = useMemo(() => {
+  const scoped = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return rows;
-    return rows.filter((row) =>
-      [row.name, row.email, row.schoolName, row.schoolCode ?? '', row.role]
+    return rows.filter((row) => {
+      if (role !== 'all' && row.role !== role) return false;
+      if (schoolId !== 'all' && row.schoolId !== schoolId) return false;
+      if (!query) return true;
+      return [row.name, row.email, row.schoolName, row.schoolCode ?? '', roleLabel(row.role)]
         .join(' ')
         .toLowerCase()
-        .includes(query),
-    );
-  }, [rows, search]);
+        .includes(query);
+    });
+  }, [rows, role, schoolId, search]);
+
+  const filtered = useMemo(
+    () => (status === 'all' ? scoped : scoped.filter((row) => row.status === status)),
+    [scoped, status],
+  );
+
+  const countFor = (value: CloudMembershipStatus | 'all') =>
+    value === 'all' ? scoped.length : scoped.filter((row) => row.status === value).length;
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const pageRows = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+  const selectableRows = pageRows.filter((row) => row.status === 'pending');
+  const allSelected =
+    selectableRows.length > 0 && selectableRows.every((row) => selected.has(row.id));
+
+  const clearSelection = () => setSelected(new Set());
+
+  const toggleRow = (id: string) => {
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    setSelected((current) => {
+      const next = new Set(current);
+      selectableRows.forEach((row) => {
+        if (allSelected) next.delete(row.id);
+        else next.add(row.id);
+      });
+      return next;
+    });
+  };
 
   const decide = async (
     membership: AdminMembership,
@@ -710,67 +946,238 @@ function RequestsPage({
     setError('');
     try {
       await updateAdminMembership(membership.id, nextStatus);
+      const action =
+        nextStatus === 'active'
+          ? membership.status === 'pending'
+            ? 'Access approved'
+            : 'Access restored'
+          : nextStatus === 'suspended'
+            ? 'Access suspended'
+            : 'Access declined';
+      onNotify(`${action} for ${membership.name} (${roleMeta(membership.role).short}).`);
       await load();
       onChanged();
     } catch (cause) {
-      setError(errorText(cause));
+      const message = errorText(cause);
+      setError(message);
+      onNotify(message, 'error');
     } finally {
       setBusyId('');
     }
   };
 
+  const bulkDecide = async (nextStatus: 'active' | 'rejected') => {
+    const targets = rows.filter((row) => selected.has(row.id) && row.status === 'pending');
+    if (!targets.length) return;
+    setBulkBusy(true);
+    setError('');
+    const results = await Promise.allSettled(
+      targets.map((row) => updateAdminMembership(row.id, nextStatus)),
+    );
+    const succeeded = results.filter((result) => result.status === 'fulfilled').length;
+    const failed = results.length - succeeded;
+    await load();
+    onChanged();
+    clearSelection();
+    setBulkBusy(false);
+    const verb = nextStatus === 'active' ? 'approved' : 'declined';
+    if (failed) {
+      const message = succeeded
+        ? `${succeeded} ${verb}; ${failed} failed.`
+        : `${failed} member${failed === 1 ? '' : 's'} could not be ${verb}.`;
+      setError(message);
+      onNotify(message, 'error');
+    } else {
+      onNotify(`${succeeded} member${succeeded === 1 ? '' : 's'} ${verb}.`);
+    }
+  };
+
   return (
     <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-1 rounded-xl border border-slate-200 bg-white p-1 dark:border-slate-800 dark:bg-slate-900">
+        {USER_STATUS_TABS.map((tab) => {
+          const active = status === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => {
+                setStatus(tab.id);
+                setPage(0);
+                clearSelection();
+              }}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${
+                active
+                  ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+                  : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+              }`}
+            >
+              {tab.label}
+              <span
+                className={`rounded-full px-1.5 text-[10px] ${
+                  active ? 'bg-white/20 dark:bg-slate-900/15' : 'bg-slate-100 dark:bg-slate-800'
+                }`}
+              >
+                {countFor(tab.id)}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
       <div className="flex flex-wrap items-end gap-2">
-        <Field label="Status">
-          <SelectInput
-            value={status}
-            onChange={(event) => setStatus(event.target.value as CloudMembershipStatus | 'all')}
-            className="!w-auto"
-          >
-            <option value="pending">Pending</option>
-            <option value="active">Active</option>
-            <option value="rejected">Declined</option>
-            <option value="suspended">Suspended</option>
-            <option value="all">All</option>
-          </SelectInput>
-        </Field>
         <div className="min-w-[220px] flex-1">
           <Field label="Search">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <TextInput
                 value={search}
-                onChange={(event) => setSearch(event.target.value)}
+                onChange={(event) => {
+                  setSearch(event.target.value);
+                  setPage(0);
+                  clearSelection();
+                }}
                 placeholder="Name, email, school, role…"
                 className="!pl-9"
               />
             </div>
           </Field>
         </div>
-        <Badge>{filtered.length} shown</Badge>
+        <Field label="Role">
+          <SelectInput
+            value={role}
+            onChange={(event) => {
+              setRole(event.target.value);
+              setPage(0);
+              clearSelection();
+            }}
+            className="!w-auto"
+          >
+            {USER_ROLE_OPTIONS.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+              </option>
+            ))}
+          </SelectInput>
+        </Field>
+        <Field label="School">
+          <SelectInput
+            value={schoolId}
+            onChange={(event) => {
+              setSchoolId(event.target.value);
+              setPage(0);
+              clearSelection();
+            }}
+            className="!w-auto max-w-[220px]"
+          >
+            <option value="all">All schools</option>
+            {schools.map((school) => (
+              <option key={school.id} value={school.id}>
+                {school.name}
+              </option>
+            ))}
+          </SelectInput>
+        </Field>
+        <Badge>{filtered.length.toLocaleString()} users</Badge>
       </div>
 
       <ErrorNotice message={error} />
 
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-700 dark:border-brand-900/50 dark:bg-brand-950/30 dark:text-sky-300">
+          <span className="font-semibold">{selected.size} selected</span>
+          <Btn
+            size="xs"
+            variant="primary"
+            disabled={bulkBusy}
+            onClick={() => void bulkDecide('active')}
+          >
+            {bulkBusy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+            Approve
+          </Btn>
+          <Btn
+            size="xs"
+            variant="danger"
+            disabled={bulkBusy}
+            onClick={() => void bulkDecide('rejected')}
+          >
+            <X className="h-3 w-3" /> Decline
+          </Btn>
+          <Btn size="xs" variant="subtle" disabled={bulkBusy} onClick={clearSelection}>
+            Clear
+          </Btn>
+        </div>
+      )}
+
       {loading ? (
-        <LoadingBlock label="Loading memberships…" />
+        <LoadingBlock label="Loading users…" />
       ) : filtered.length === 0 ? (
         <EmptyState
-          title="No memberships found"
-          hint="Try another status or clear the search."
+          title="No users found"
+          hint="Try another status, role, school, or search term."
         />
       ) : (
-        <div className="space-y-2">
-          {filtered.map((membership) => (
-            <MembershipCard
-              key={membership.id}
-              membership={membership}
-              busy={busyId === membership.id}
-              onDecide={(item, nextStatus) => void decide(item, nextStatus)}
-            />
-          ))}
-        </div>
+        <>
+          <div className="space-y-2">
+            <div className="flex items-center gap-2 px-1 text-xs text-slate-500 dark:text-slate-400">
+              <label className="inline-flex cursor-pointer items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={toggleAll}
+                  disabled={selectableRows.length === 0}
+                  className="h-4 w-4 rounded accent-brand-600 disabled:cursor-not-allowed disabled:opacity-40"
+                />
+                Select pending on this page
+              </label>
+            </div>
+            {pageRows.map((membership) => (
+              <MembershipCard
+                key={membership.id}
+                membership={membership}
+                busy={busyId === membership.id}
+                selectable={membership.status === 'pending'}
+                selected={selected.has(membership.id)}
+                onToggle={() => toggleRow(membership.id)}
+                onDecide={(item, nextStatus) => void decide(item, nextStatus)}
+              />
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-1 pt-3 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+            <span>
+              Showing {safePage * PAGE_SIZE + 1}–
+              {Math.min((safePage + 1) * PAGE_SIZE, filtered.length)} of{' '}
+              {filtered.length.toLocaleString()}
+            </span>
+            <div className="ml-auto flex items-center gap-1.5">
+              <Btn
+                size="xs"
+                variant="ghost"
+                disabled={safePage === 0}
+                onClick={() => {
+                  setPage(Math.max(0, safePage - 1));
+                  clearSelection();
+                }}
+              >
+                Previous
+              </Btn>
+              <span className="px-2">
+                {safePage + 1} / {pageCount}
+              </span>
+              <Btn
+                size="xs"
+                variant="ghost"
+                disabled={safePage >= pageCount - 1}
+                onClick={() => {
+                  setPage(Math.min(pageCount - 1, safePage + 1));
+                  clearSelection();
+                }}
+              >
+                Next
+              </Btn>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
@@ -1074,12 +1481,14 @@ function SchoolDetailPage({
   onBack,
   onChanged,
   onOpenWorkspace,
+  onNotify,
 }: {
   schoolId: string;
   refreshKey: number;
   onBack: () => void;
   onChanged: () => void;
   onOpenWorkspace: (schoolId: string) => void;
+  onNotify: (message: string, tone?: 'success' | 'error') => void;
 }) {
   const [detail, setDetail] = useState<AdminSchoolDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1110,10 +1519,21 @@ function SchoolDetailPage({
     setError('');
     try {
       await updateAdminMembership(member.id, status);
+      const action =
+        status === 'active'
+          ? member.status === 'pending'
+            ? 'Access approved'
+            : 'Access restored'
+          : status === 'suspended'
+            ? 'Access suspended'
+            : 'Access declined';
+      onNotify(`${action} for ${member.name} (${roleMeta(member.role).short}).`);
       await load();
       onChanged();
     } catch (cause) {
-      setError(errorText(cause));
+      const message = errorText(cause);
+      setError(message);
+      onNotify(message, 'error');
     } finally {
       setBusyId('');
     }
@@ -1221,11 +1641,12 @@ function SchoolDetailPage({
                           {member.email}
                         </span>
                       </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {member.role} · joined {formatDate(member.createdAt)}
-                      </p>
+                      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                        <RolePill role={member.role} />
+                        <span>Joined {formatDate(member.createdAt)}</span>
+                      </div>
                     </div>
-                    <Badge tone={membershipTone(member.status)}>{member.status}</Badge>
+                    <StatusIndicator status={member.status} />
                   </div>
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {member.status === 'pending' && (
@@ -1285,73 +1706,85 @@ function SchoolDetailPage({
 
 function ActivityPage({ refreshKey }: { refreshKey: number }) {
   const [entries, setEntries] = useState<AdminActivityEntry[]>([]);
+  const [total, setTotal] = useState(0);
+  const [schools, setSchools] = useState<AdminSchool[]>([]);
   const [search, setSearch] = useState('');
+  const [query, setQuery] = useState('');
+  const [group, setGroup] = useState('');
+  const [schoolId, setSchoolId] = useState('');
+  const [range, setRange] = useState<ActivityRange>('all');
+  const [page, setPage] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState('');
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const next = await listAdminActivity({ limit: ACTIVITY_LIMIT });
-      setEntries(next);
-      setHasMore(next.length === ACTIVITY_LIMIT);
-    } catch (cause) {
-      setError(errorText(cause));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
+  const hasFilters = Boolean(search.trim() || group || schoolId || range !== 'all');
 
   useEffect(() => {
-    void load();
-  }, [load, refreshKey]);
+    const timer = window.setTimeout(() => {
+      setQuery(search.trim());
+      setPage(0);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
-  const loadMore = async () => {
-    const last = entries[entries.length - 1];
-    if (!last) return;
-    setLoadingMore(true);
-    setError('');
-    try {
-      const next = await listAdminActivity({
-        limit: ACTIVITY_LIMIT,
-        before: last.createdAt,
-      });
-      setEntries((current) => {
-        const seen = new Set(current.map((entry) => entry.id));
-        return [...current, ...next.filter((entry) => !seen.has(entry.id))];
-      });
-      setHasMore(next.length === ACTIVITY_LIMIT);
-    } catch (cause) {
-      setError(errorText(cause));
-    } finally {
-      setLoadingMore(false);
-    }
+  useEffect(() => {
+    let active = true;
+    listAdminSchools()
+      .then((next) => {
+        if (active) setSchools(next);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [refreshKey]);
+
+  useEffect(() => {
+    let active = true;
+    const run = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const seconds = ACTIVITY_RANGES.find((item) => item.id === range)?.seconds ?? 0;
+        const from = seconds ? Math.floor(Date.now() / 1000) - seconds : undefined;
+        const result = await listAdminActivityPage({
+          limit: PAGE_SIZE,
+          offset: safePage * PAGE_SIZE,
+          q: query || undefined,
+          action: group || undefined,
+          schoolId: schoolId || undefined,
+          from,
+        });
+        if (!active) return;
+        setEntries(result.entries);
+        setTotal(result.total);
+      } catch (cause) {
+        if (active) setError(errorText(cause));
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void run();
+    return () => {
+      active = false;
+    };
+  }, [group, query, range, refreshKey, safePage, schoolId]);
+
+  const resetFilters = () => {
+    setSearch('');
+    setQuery('');
+    setGroup('');
+    setSchoolId('');
+    setRange('all');
+    setPage(0);
   };
-
-  const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return entries;
-    return entries.filter((entry) =>
-      [
-        entry.actorName ?? '',
-        entry.actorEmail ?? '',
-        entry.schoolName ?? '',
-        entry.action,
-        entry.entityType,
-      ]
-        .join(' ')
-        .toLowerCase()
-        .includes(query),
-    );
-  }, [entries, search]);
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-end gap-2">
-        <div className="min-w-[240px] flex-1">
+        <div className="min-w-[220px] flex-1">
           <Field label="Search activity">
             <div className="relative">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -1364,35 +1797,107 @@ function ActivityPage({ refreshKey }: { refreshKey: number }) {
             </div>
           </Field>
         </div>
-        <Badge>{filtered.length.toLocaleString()} shown</Badge>
+        <Field label="Action">
+          <SelectInput
+            value={group}
+            onChange={(event) => {
+              setGroup(event.target.value);
+              setPage(0);
+            }}
+            className="!w-auto"
+          >
+            <option value="">All actions</option>
+            {ACTIVITY_GROUPS.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </SelectInput>
+        </Field>
+        <Field label="School">
+          <SelectInput
+            value={schoolId}
+            onChange={(event) => {
+              setSchoolId(event.target.value);
+              setPage(0);
+            }}
+            className="!w-auto max-w-[220px]"
+          >
+            <option value="">All schools</option>
+            {schools.map((school) => (
+              <option key={school.id} value={school.id}>
+                {school.name}
+              </option>
+            ))}
+          </SelectInput>
+        </Field>
+        <Field label="Period">
+          <SelectInput
+            value={range}
+            onChange={(event) => {
+              setRange(event.target.value as ActivityRange);
+              setPage(0);
+            }}
+            className="!w-auto"
+          >
+            {ACTIVITY_RANGES.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.label}
+              </option>
+            ))}
+          </SelectInput>
+        </Field>
+        <Badge>{total.toLocaleString()} events</Badge>
+        {hasFilters && (
+          <Btn size="sm" variant="subtle" onClick={resetFilters}>
+            <X className="h-3.5 w-3.5" /> Reset
+          </Btn>
+        )}
       </div>
 
       <ErrorNotice message={error} />
 
       {loading ? (
         <LoadingBlock label="Loading activity…" />
-      ) : filtered.length === 0 ? (
-        <EmptyState title="No activity found" hint="Try a different search term." />
+      ) : entries.length === 0 ? (
+        <EmptyState
+          title="No activity found"
+          hint={
+            hasFilters
+              ? 'Try adjusting the filters or search term.'
+              : 'Workspace activity will appear here.'
+          }
+        />
       ) : (
         <>
-          <ActivityList entries={filtered} />
-          {hasMore && !search && (
-            <div className="flex justify-center pt-1">
+          <ActivityList entries={entries} />
+          <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-1 pt-3 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
+            <span>
+              Showing {safePage * PAGE_SIZE + 1}–
+              {Math.min((safePage + 1) * PAGE_SIZE, total)} of {total.toLocaleString()}
+            </span>
+            <div className="ml-auto flex items-center gap-1.5">
               <Btn
-                variant="soft"
-                size="sm"
-                onClick={() => void loadMore()}
-                disabled={loadingMore}
+                size="xs"
+                variant="ghost"
+                disabled={safePage === 0}
+                onClick={() => setPage(Math.max(0, safePage - 1))}
               >
-                {loadingMore ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <RefreshCw className="h-3.5 w-3.5" />
-                )}
-                Load more
+                Previous
+              </Btn>
+              <span className="px-2">
+                {safePage + 1} / {pageCount}
+              </span>
+              <Btn
+                size="xs"
+                variant="ghost"
+                disabled={safePage >= pageCount - 1}
+                onClick={() => setPage(Math.min(pageCount - 1, safePage + 1))}
+              >
+                Next
               </Btn>
             </div>
-          )}
+          </div>
         </>
       )}
     </div>
@@ -1415,6 +1920,36 @@ export default function AdminConsole({
   const [overview, setOverview] = useState<AdminOverview | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [overviewError, setOverviewError] = useState('');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem('dtr-admin-sidebar-collapsed') === '1';
+    } catch {
+      return false;
+    }
+  });
+  const [toast, setToast] = useState<ToastState | null>(null);
+
+  const notify = useCallback((message: string, tone: 'success' | 'error' = 'success') => {
+    setToast({ id: Date.now(), tone, message });
+  }, []);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 3600);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem('dtr-admin-sidebar-collapsed', next ? '1' : '0');
+      } catch {
+        // Ignore storage failures.
+      }
+      return next;
+    });
+  };
 
   useEffect(() => {
     let active = true;
@@ -1576,15 +2111,39 @@ export default function AdminConsole({
 
   return (
     <div className="min-h-dvh bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-slate-200 bg-white px-4 py-5 dark:border-slate-800 dark:bg-slate-900 lg:flex">
-        <div className="flex items-center gap-3 px-2">
-          <span className="grid h-9 w-9 place-items-center rounded-xl bg-slate-900 text-white dark:bg-white dark:text-slate-900">
+      <aside
+        className={`fixed inset-y-0 left-0 z-30 hidden flex-col border-r border-slate-200 bg-white py-5 transition-[width,padding] duration-200 dark:border-slate-800 dark:bg-slate-900 lg:flex ${
+          sidebarCollapsed ? 'w-[76px] px-2' : 'w-64 px-4'
+        }`}
+      >
+        <div
+          className={`flex items-center ${
+            sidebarCollapsed ? 'flex-col gap-2' : 'gap-3 px-2'
+          }`}
+        >
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-slate-900 text-white dark:bg-white dark:text-slate-900">
             <Clock3 className="h-4 w-4" />
           </span>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold tracking-tight">DTR Admin</p>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400">System console</p>
-          </div>
+          {!sidebarCollapsed && (
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold tracking-tight">DTR Admin</p>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">System console</p>
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={toggleSidebar}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!sidebarCollapsed}
+            className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800 dark:hover:text-white"
+          >
+            {sidebarCollapsed ? (
+              <PanelLeftOpen className="h-4 w-4" />
+            ) : (
+              <PanelLeftClose className="h-4 w-4" />
+            )}
+          </button>
         </div>
 
         <nav className="mt-6 space-y-1">
@@ -1598,23 +2157,31 @@ export default function AdminConsole({
                 onClick={() => {
                   window.location.hash = pageHash(item.id);
                 }}
-                className={`flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-left text-[13px] font-medium transition-colors ${
+                title={sidebarCollapsed ? item.label : undefined}
+                aria-label={item.label}
+                className={`relative flex w-full items-center rounded-xl text-left text-[13px] font-medium transition-colors ${
+                  sidebarCollapsed ? 'justify-center px-0 py-2.5' : 'gap-2.5 px-3 py-2'
+                } ${
                   active
                     ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
                     : 'text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
                 }`}
               >
-                <Icon className="h-4 w-4" />
-                <span className="flex-1">{item.label}</span>
-                {item.id === 'requests' && pendingCount > 0 && (
+                <Icon className="h-4 w-4 shrink-0" />
+                {!sidebarCollapsed && <span className="flex-1">{item.label}</span>}
+                {item.id === 'users' && pendingCount > 0 && (
                   <span
-                    className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
-                      active
-                        ? 'bg-white/20 text-white dark:bg-slate-900/15 dark:text-slate-900'
-                        : 'bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-sky-300'
-                    }`}
+                    className={
+                      sidebarCollapsed
+                        ? 'absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-brand-500'
+                        : `rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                            active
+                              ? 'bg-white/20 text-white dark:bg-slate-900/15 dark:text-slate-900'
+                              : 'bg-brand-50 text-brand-700 dark:bg-brand-950/50 dark:text-sky-300'
+                          }`
+                    }
                   >
-                    {pendingCount}
+                    {sidebarCollapsed ? '' : pendingCount}
                   </span>
                 )}
               </button>
@@ -1623,19 +2190,28 @@ export default function AdminConsole({
         </nav>
 
         <div className="mt-auto space-y-2 border-t border-slate-200 pt-4 dark:border-slate-800">
-          <div className="flex items-center gap-2.5 px-1">
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+          <div
+            className={`flex items-center ${
+              sidebarCollapsed ? 'justify-center' : 'gap-2.5 px-1'
+            }`}
+          >
+            <span
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+              title={sidebarCollapsed ? `${session.user.name} · ${session.user.email}` : undefined}
+            >
               {initials(session.user.name)}
             </span>
-            <div className="min-w-0">
-              <p className="truncate text-xs font-semibold">{session.user.name}</p>
-              <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
-                {session.user.email}
-              </p>
-              <div className="mt-1">
-                <Badge tone="brand">system admin</Badge>
+            {!sidebarCollapsed && (
+              <div className="min-w-0">
+                <p className="truncate text-xs font-semibold">{session.user.name}</p>
+                <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
+                  {session.user.email}
+                </p>
+                <p className="mt-1 flex items-center gap-1 text-[10px] font-medium uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
+                  <ShieldCheck className="h-3 w-3" /> System admin
+                </p>
               </div>
-            </div>
+            )}
           </div>
           <Btn
             variant="soft"
@@ -1643,16 +2219,19 @@ export default function AdminConsole({
             className="w-full"
             onClick={() => void logout()}
             disabled={busy}
+            title="Sign out"
           >
-            <LogOut className="h-3.5 w-3.5" /> Sign out
-          </Btn>
-          <Btn variant="subtle" size="sm" className="w-full" onClick={onExit}>
-            <ArrowLeft className="h-3.5 w-3.5" /> Back to DTR Tool
+            <LogOut className="h-3.5 w-3.5 shrink-0" />
+            {!sidebarCollapsed && 'Sign out'}
           </Btn>
         </div>
       </aside>
 
-      <div className="lg:pl-64">
+      <div
+        className={`transition-[padding] duration-200 ${
+          sidebarCollapsed ? 'lg:pl-[76px]' : 'lg:pl-64'
+        }`}
+      >
         <div className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900 lg:hidden">
           <div className="flex items-center gap-3 px-4 py-3">
             <span className="grid h-8 w-8 place-items-center rounded-lg bg-slate-900 text-white dark:bg-white dark:text-slate-900">
@@ -1688,7 +2267,7 @@ export default function AdminConsole({
                 >
                   <Icon className="h-3.5 w-3.5" />
                   {item.label}
-                  {item.id === 'requests' && pendingCount > 0 && (
+                  {item.id === 'users' && pendingCount > 0 && (
                     <span className="rounded-full bg-white/20 px-1.5 text-[10px] dark:bg-slate-900/15">
                       {pendingCount}
                     </span>
@@ -1705,10 +2284,7 @@ export default function AdminConsole({
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
                 System administration
               </p>
-              <div className="flex items-center gap-2">
-                <h1 className="truncate text-lg font-semibold tracking-tight">{meta.title}</h1>
-                <Badge tone="brand">system admin</Badge>
-              </div>
+              <h1 className="truncate text-lg font-semibold tracking-tight">{meta.title}</h1>
             </div>
             <div className="ml-auto flex items-center gap-2">
               <Btn size="sm" variant="soft" onClick={refresh} disabled={overviewLoading}>
@@ -1728,10 +2304,7 @@ export default function AdminConsole({
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
                 System administration
               </p>
-              <div className="flex items-center gap-2">
-                <h1 className="truncate text-lg font-semibold tracking-tight">{meta.title}</h1>
-                <Badge tone="brand">system admin</Badge>
-              </div>
+              <h1 className="truncate text-lg font-semibold tracking-tight">{meta.title}</h1>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{meta.subtitle}</p>
             </div>
           </div>
@@ -1745,9 +2318,14 @@ export default function AdminConsole({
               }}
               onChanged={() => void loadOverview()}
               onOpenWorkspace={onOpenWorkspace}
+              onNotify={notify}
             />
-          ) : route.page === 'requests' ? (
-            <RequestsPage refreshKey={refreshKey} onChanged={() => void loadOverview()} />
+          ) : route.page === 'users' ? (
+            <UsersPage
+              refreshKey={refreshKey}
+              onChanged={() => void loadOverview()}
+              onNotify={notify}
+            />
           ) : route.page === 'schools' ? (
             <SchoolsPage
               refreshKey={refreshKey}
@@ -1768,17 +2346,19 @@ export default function AdminConsole({
               error={overviewError}
               refreshKey={refreshKey}
               onRefresh={refresh}
-              onOpenRequests={() => {
-                window.location.hash = '#/admin/requests';
+              onOpenUsers={() => {
+                window.location.hash = '#/admin/users';
               }}
               onOpenActivity={() => {
                 window.location.hash = '#/admin/activity';
               }}
               onChanged={() => void loadOverview()}
+              onNotify={notify}
             />
           )}
         </main>
       </div>
+      {toast && <AdminToast toast={toast} onDismiss={() => setToast(null)} />}
     </div>
   );
 }

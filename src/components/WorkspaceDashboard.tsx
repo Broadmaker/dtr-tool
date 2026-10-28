@@ -17,6 +17,7 @@ import type {
   CloudLeaveApplication,
   CloudOfficialTravel,
 } from '../lib/api';
+import { roleLabel } from '../lib/roles';
 
 export type WorkspaceTab =
   | 'dashboard'
@@ -145,7 +146,8 @@ export default function WorkspaceDashboard({
           </p>
           <h2 className="mt-1 text-lg font-semibold tracking-tight">{schoolName}</h2>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-            {monthName(month)} {year} · signed in as {role} · {activeEmployees.length} active
+            {monthName(month)} {year} · signed in as {roleLabel(role)} ·{' '}
+            {activeEmployees.length} active
             employees
           </p>
         </div>

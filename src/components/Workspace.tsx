@@ -67,6 +67,7 @@ import type {
   CloudUser,
   SchoolCatalogEntry,
 } from '../lib/api';
+import { roleLabel, roleShortLabel } from '../lib/roles';
 
 type Tab = WorkspaceTab;
 
@@ -1162,7 +1163,9 @@ export default function Workspace({
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium">{membership.schoolName}</p>
                   <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-                    {[membership.schoolCode, membership.role].filter(Boolean).join(' · ')}
+                    {[membership.schoolCode, roleLabel(membership.role)]
+                      .filter(Boolean)
+                      .join(' · ')}
                   </p>
                 </div>
                 <Badge tone={membership.status === 'pending' ? 'brand' : 'warn'}>
@@ -1295,7 +1298,7 @@ export default function Workspace({
               </p>
               <p className="mt-0.5 truncate text-sm font-semibold">{school.name}</p>
               <div className="mt-1.5 flex items-center gap-1.5">
-                <Badge tone="brand">{school.role}</Badge>
+                <Badge tone="brand">{roleLabel(school.role)}</Badge>
                 {school.schoolCode && (
                   <span className="text-[10px] text-slate-500 dark:text-slate-400">
                     {school.schoolCode}
@@ -1629,7 +1632,7 @@ export default function Workspace({
                         {user.name}
                       </span>
                       <span className="block max-w-[140px] truncate text-[10px] text-slate-500 dark:text-slate-400">
-                        {school?.role ?? user.email}
+                        {school ? roleShortLabel(school.role) : user.email}
                       </span>
                     </span>
                     <ChevronDown
@@ -1763,7 +1766,7 @@ export default function Workspace({
                         <div className="flex flex-wrap items-center gap-2">
                           {school && (
                             <span className="inline-flex h-9 items-center rounded-xl border border-white/20 bg-white/10 px-3 text-[11px] font-semibold uppercase tracking-wide text-white/80">
-                              {school.role}
+                              {roleShortLabel(school.role)}
                             </span>
                           )}
                           {school?.schoolCode && (

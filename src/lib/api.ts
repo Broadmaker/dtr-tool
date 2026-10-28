@@ -232,17 +232,41 @@ export async function getAdminOverview(): Promise<AdminOverview> {
   return data.overview
 }
 
-export async function listAdminActivity(
-  opts: { limit?: number; before?: number } = {},
-): Promise<AdminActivityEntry[]> {
+export type AdminActivityQuery = {
+  limit?: number
+  offset?: number
+  before?: number
+  q?: string
+  action?: string
+  schoolId?: string
+  from?: number
+  to?: number
+}
+
+export async function listAdminActivityPage(
+  opts: AdminActivityQuery = {},
+): Promise<{ entries: AdminActivityEntry[]; total: number }> {
   const params = new URLSearchParams()
   if (opts.limit) params.set('limit', String(opts.limit))
+  if (opts.offset) params.set('offset', String(opts.offset))
   if (opts.before) params.set('before', String(opts.before))
+  if (opts.q) params.set('q', opts.q)
+  if (opts.action) params.set('action', opts.action)
+  if (opts.schoolId) params.set('schoolId', opts.schoolId)
+  if (opts.from) params.set('from', String(opts.from))
+  if (opts.to) params.set('to', String(opts.to))
   const query = params.toString()
-  const data = await request<{ entries: AdminActivityEntry[] }>(
+  const data = await request<{ entries: AdminActivityEntry[]; total?: number }>(
     `/api/admin/activity${query ? `?${query}` : ''}`,
   )
-  return data.entries
+  return { entries: data.entries, total: data.total ?? data.entries.length }
+}
+
+export async function listAdminActivity(
+  opts: AdminActivityQuery = {},
+): Promise<AdminActivityEntry[]> {
+  const { entries } = await listAdminActivityPage(opts)
+  return entries
 }
 
 export async function getAdminSchoolDetail(schoolId: string): Promise<AdminSchoolDetail> {
