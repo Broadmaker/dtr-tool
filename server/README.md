@@ -64,7 +64,7 @@ openssl rand -base64 32
 | `GET` | `/api/schools/catalog` | Official school list for AO onboarding |
 | `GET` | `/api/onboarding/memberships` | Current user's school memberships and statuses |
 | `POST` | `/api/onboarding/join` | Request AO access to `{ schoolId }` |
-| `GET/PATCH` | `/api/admin/memberships` | System admin: list and approve/decline/suspend AOs |
+| `GET/PATCH` | `/api/admin/memberships` | System admin: list (filter by `status`, `role`, `schoolId`, `q`; `limit`/`offset`) and approve/decline/suspend AOs |
 | `GET` | `/api/admin/schools` | System admin: all schools with member/employee counts |
 
 Everything below requires an active membership for `:schoolId`, unless the caller

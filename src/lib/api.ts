@@ -273,14 +273,51 @@ export async function getAdminSchoolDetail(schoolId: string): Promise<AdminSchoo
   return request<AdminSchoolDetail>(`/api/admin/schools/${encodeURIComponent(schoolId)}`)
 }
 
+export type AdminMembershipQuery = {
+  status?: CloudMembershipStatus
+  role?: string
+  schoolId?: string
+  q?: string
+  limit?: number
+  offset?: number
+}
+
+export type AdminMembershipCounts = Record<CloudMembershipStatus | 'all', number>
+
+export async function listAdminMembershipsPage(
+  opts: AdminMembershipQuery = {},
+): Promise<{
+  memberships: AdminMembership[]
+  total: number
+  counts: AdminMembershipCounts
+}> {
+  const params = new URLSearchParams()
+  if (opts.status) params.set('status', opts.status)
+  if (opts.role) params.set('role', opts.role)
+  if (opts.schoolId) params.set('schoolId', opts.schoolId)
+  if (opts.q) params.set('q', opts.q)
+  if (opts.limit) params.set('limit', String(opts.limit))
+  if (opts.offset) params.set('offset', String(opts.offset))
+  const query = params.toString()
+  const data = await request<{
+    memberships: AdminMembership[]
+    total?: number
+    counts?: Partial<AdminMembershipCounts>
+  }>(`/api/admin/memberships${query ? `?${query}` : ''}`)
+  return {
+    memberships: data.memberships,
+    total: data.total ?? data.memberships.length,
+    counts: { pending: 0, active: 0, rejected: 0, suspended: 0, all: 0, ...data.counts },
+  }
+}
+
 export async function listAdminMemberships(
   status?: CloudMembershipStatus,
 ): Promise<AdminMembership[]> {
-  const query = status ? `?status=${status}` : ''
-  const data = await request<{ memberships: AdminMembership[] }>(
-    `/api/admin/memberships${query}`,
+  const { memberships } = await listAdminMembershipsPage(
+    status ? { status, limit: 200 } : { limit: 200 },
   )
-  return data.memberships
+  return memberships
 }
 
 export async function updateAdminMembership(

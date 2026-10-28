@@ -31,6 +31,7 @@ import {
   listAdminActivity,
   listAdminActivityPage,
   listAdminMemberships,
+  listAdminMembershipsPage,
   listAdminSchools,
   signIn,
   signOut,
@@ -39,6 +40,7 @@ import {
 import type {
   AdminActivityEntry,
   AdminMembership,
+  AdminMembershipCounts,
   AdminOverview,
   AdminSchool,
   AdminSchoolDetail,
@@ -860,58 +862,82 @@ function UsersPage({
   const [role, setRole] = useState('all');
   const [schoolId, setSchoolId] = useState('all');
   const [search, setSearch] = useState('');
+  const [query, setQuery] = useState('');
   const [page, setPage] = useState(0);
+  const [total, setTotal] = useState(0);
+  const [counts, setCounts] = useState<AdminMembershipCounts>({
+    pending: 0,
+    active: 0,
+    rejected: 0,
+    suspended: 0,
+    all: 0,
+  });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
+  const [reloadToken, setReloadToken] = useState(0);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [error, setError] = useState('');
   const [busyId, setBusyId] = useState('');
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const [memberships, nextSchools] = await Promise.all([
-        listAdminMemberships(),
-        listAdminSchools(),
-      ]);
-      setRows(memberships);
-      setSchools(nextSchools);
-    } catch (cause) {
-      setError(errorText(cause));
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+  const reload = () => setReloadToken((token) => token + 1);
+
+  const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const safePage = Math.min(page, pageCount - 1);
 
   useEffect(() => {
-    void load();
-  }, [load, refreshKey]);
+    const timer = window.setTimeout(() => {
+      setQuery(search.trim());
+      setPage(0);
+      setSelected(new Set());
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [search]);
 
-  const scoped = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    return rows.filter((row) => {
-      if (role !== 'all' && row.role !== role) return false;
-      if (schoolId !== 'all' && row.schoolId !== schoolId) return false;
-      if (!query) return true;
-      return [row.name, row.email, row.schoolName, row.schoolCode ?? '', roleLabel(row.role)]
-        .join(' ')
-        .toLowerCase()
-        .includes(query);
-    });
-  }, [rows, role, schoolId, search]);
+  useEffect(() => {
+    let active = true;
+    listAdminSchools()
+      .then((next) => {
+        if (active) setSchools(next);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [refreshKey]);
 
-  const filtered = useMemo(
-    () => (status === 'all' ? scoped : scoped.filter((row) => row.status === status)),
-    [scoped, status],
-  );
+  useEffect(() => {
+    let active = true;
+    const run = async () => {
+      setLoading(true);
+      setError('');
+      try {
+        const result = await listAdminMembershipsPage({
+          status: status === 'all' ? undefined : status,
+          role: role === 'all' ? undefined : role,
+          schoolId: schoolId === 'all' ? undefined : schoolId,
+          q: query || undefined,
+          limit: PAGE_SIZE,
+          offset: safePage * PAGE_SIZE,
+        });
+        if (!active) return;
+        setRows(result.memberships);
+        setTotal(result.total);
+        setCounts(result.counts);
+      } catch (cause) {
+        if (active) setError(errorText(cause));
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    void run();
+    return () => {
+      active = false;
+    };
+  }, [query, refreshKey, reloadToken, role, safePage, schoolId, status]);
 
-  const countFor = (value: CloudMembershipStatus | 'all') =>
-    value === 'all' ? scoped.length : scoped.filter((row) => row.status === value).length;
+  const countFor = (value: CloudMembershipStatus | 'all') => counts[value];
 
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const safePage = Math.min(page, pageCount - 1);
-  const pageRows = filtered.slice(safePage * PAGE_SIZE, (safePage + 1) * PAGE_SIZE);
+  const pageRows = rows;
   const selectableRows = pageRows.filter((row) => row.status === 'pending');
   const allSelected =
     selectableRows.length > 0 && selectableRows.every((row) => selected.has(row.id));
@@ -955,7 +981,7 @@ function UsersPage({
             ? 'Access suspended'
             : 'Access declined';
       onNotify(`${action} for ${membership.name} (${roleMeta(membership.role).short}).`);
-      await load();
+      reload();
       onChanged();
     } catch (cause) {
       const message = errorText(cause);
@@ -976,7 +1002,7 @@ function UsersPage({
     );
     const succeeded = results.filter((result) => result.status === 'fulfilled').length;
     const failed = results.length - succeeded;
-    await load();
+    reload();
     onChanged();
     clearSelection();
     setBulkBusy(false);
@@ -1034,7 +1060,6 @@ function UsersPage({
                 value={search}
                 onChange={(event) => {
                   setSearch(event.target.value);
-                  setPage(0);
                   clearSelection();
                 }}
                 placeholder="Name, email, school, role…"
@@ -1078,7 +1103,7 @@ function UsersPage({
             ))}
           </SelectInput>
         </Field>
-        <Badge>{filtered.length.toLocaleString()} users</Badge>
+        <Badge>{total.toLocaleString()} users</Badge>
       </div>
 
       <ErrorNotice message={error} />
@@ -1111,7 +1136,7 @@ function UsersPage({
 
       {loading ? (
         <LoadingBlock label="Loading users…" />
-      ) : filtered.length === 0 ? (
+      ) : total === 0 ? (
         <EmptyState
           title="No users found"
           hint="Try another status, role, school, or search term."
@@ -1146,8 +1171,7 @@ function UsersPage({
           <div className="flex flex-wrap items-center gap-2 border-t border-slate-200 px-1 pt-3 text-xs text-slate-500 dark:border-slate-800 dark:text-slate-400">
             <span>
               Showing {safePage * PAGE_SIZE + 1}–
-              {Math.min((safePage + 1) * PAGE_SIZE, filtered.length)} of{' '}
-              {filtered.length.toLocaleString()}
+              {Math.min((safePage + 1) * PAGE_SIZE, total)} of {total.toLocaleString()}
             </span>
             <div className="ml-auto flex items-center gap-1.5">
               <Btn

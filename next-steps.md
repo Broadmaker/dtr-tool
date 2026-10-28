@@ -34,6 +34,7 @@ Last updated: after the admin Users/Activity expansion and the docs + CI refresh
 | Saved importer presets | ✅ done (`presets.ts`, auto-apply in `needMapping`, save/apply/delete in `ColumnMappingStep`) |
 | Optional cloud workspace (auth, schools, roles) | ✅ done (`server/` + `Workspace.tsx`; local DTR flow unchanged) |
 | System admin console (users, schools, activity) | ✅ done (`AdminConsole.tsx`: bulk approval, filters, pagination, collapsible sidebar, toasts) |
+| Admin Users server-side filtering | ✅ done (`GET /api/admin/memberships` query + counts; debounced client fetch) |
 | Server typecheck in CI | ✅ done (`.github/workflows/ci.yml`) |
 
 ---
@@ -200,10 +201,10 @@ The next upload from the same biometric machine re-prompts.
 > The local DTR flow stays the priority; these only matter once the cloud
 > workspace is in active use. Backend details live in `server/README.md`.
 
-**Server-side Users filtering.** `UsersPage` currently fetches every membership
-and filters/paginates in the browser. Move `role`, `schoolId`, `q`, `status`,
-`limit`, and `offset` into `GET /api/admin/memberships` (mirroring the activity
-endpoint) so the console stays fast as membership grows.
+**Server-side Users filtering.** ✅ done — `GET /api/admin/memberships` now
+accepts `status`, `role`, `schoolId`, `q`, `limit`, and `offset`, and returns
+`{ memberships, total, counts }`. `UsersPage` debounces search and fetches one
+page at a time; tab badges use the server counts.
 
 **API tests.** `server/` has no automated tests. Add route tests against a
 local D1 (approve/decline/suspend, role checks, school scoping, audit writes,

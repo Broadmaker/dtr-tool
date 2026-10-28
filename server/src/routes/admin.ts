@@ -14,6 +14,12 @@ admin.use("*", async (c, next) => {
   await next()
 })
 
+const MEMBERSHIP_FROM = `
+  FROM school_members m
+  JOIN user u ON u.id = m.user_id
+  JOIN schools s ON s.id = m.school_id
+`
+
 const MEMBERSHIP_SELECT = `
   SELECT m.id,
          m.user_id AS userId,
@@ -25,9 +31,7 @@ const MEMBERSHIP_SELECT = `
          m.role,
          m.status,
          m.created_at AS createdAt
-  FROM school_members m
-  JOIN user u ON u.id = m.user_id
-  JOIN schools s ON s.id = m.school_id
+  ${MEMBERSHIP_FROM}
 `
 
 type AdminMembership = {
@@ -131,7 +135,16 @@ const membershipQuery = z.object({
   status: z
     .enum(["pending", "active", "rejected", "suspended"])
     .optional(),
+  role: z.string().trim().max(40).optional(),
+  schoolId: z.string().trim().max(120).optional(),
+  q: z.string().trim().max(120).optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
 })
+
+function likeContains(value: string): string {
+  return `%${value.replace(/[%_\\]/g, "\\$&")}%`
+}
 
 admin.get("/overview", async (c) => {
   const overview = await c.env.DB.prepare(
@@ -235,26 +248,72 @@ admin.get("/activity", async (c) => {
 
 admin.get("/memberships", async (c) => {
   const query = readQuery(c, membershipQuery)
-  let sql = MEMBERSHIP_SELECT
-  const binds: string[] = []
 
-  if (query.status) {
-    sql += ` WHERE m.status = ?`
-    binds.push(query.status)
+  const baseConditions: string[] = []
+  const baseBinds: string[] = []
+
+  if (query.role) {
+    baseConditions.push(`m.role = ?`)
+    baseBinds.push(query.role)
+  }
+  if (query.schoolId) {
+    baseConditions.push(`m.school_id = ?`)
+    baseBinds.push(query.schoolId)
+  }
+  if (query.q) {
+    const like = likeContains(query.q)
+    baseConditions.push(
+      `(u.name LIKE ? ESCAPE '\\' OR u.email LIKE ? ESCAPE '\\' OR s.name LIKE ? ESCAPE '\\' OR s.school_code LIKE ? ESCAPE '\\')`,
+    )
+    baseBinds.push(like, like, like, like)
   }
 
-  sql += ` ORDER BY CASE m.status
-                      WHEN 'pending' THEN 0
-                      WHEN 'active' THEN 1
-                      ELSE 2
-                    END,
-                    m.created_at DESC`
+  const baseWhere = baseConditions.length
+    ? ` WHERE ${baseConditions.join(" AND ")}`
+    : ""
 
-  const { results } = await c.env.DB.prepare(sql)
-    .bind(...binds)
-    .all<AdminMembership>()
+  const conditions = [...baseConditions]
+  const binds = [...baseBinds]
+  if (query.status) {
+    conditions.push(`m.status = ?`)
+    binds.push(query.status)
+  }
+  const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : ""
 
-  return c.json({ memberships: results })
+  const [countsResult, rows] = await Promise.all([
+    c.env.DB.prepare(
+      `SELECT m.status AS status, COUNT(*) AS total
+       ${MEMBERSHIP_FROM}${baseWhere}
+       GROUP BY m.status`,
+    )
+      .bind(...baseBinds)
+      .all<{ status: string; total: number }>(),
+    c.env.DB.prepare(
+      `${MEMBERSHIP_SELECT}${where}
+       ORDER BY CASE m.status
+                  WHEN 'pending' THEN 0
+                  WHEN 'active' THEN 1
+                  ELSE 2
+                END,
+                m.created_at DESC
+       LIMIT ? OFFSET ?`,
+    )
+      .bind(...binds, query.limit, query.offset)
+      .all<AdminMembership>(),
+  ])
+
+  const counts = { pending: 0, active: 0, rejected: 0, suspended: 0, all: 0 }
+  for (const row of countsResult.results) {
+    const key = row.status as keyof typeof counts
+    if (key !== "all") counts[key] = row.total
+    counts.all += row.total
+  }
+
+  return c.json({
+    memberships: rows.results,
+    total: query.status ? counts[query.status] : counts.all,
+    counts,
+  })
 })
 
 const membershipStatus = z.object({
