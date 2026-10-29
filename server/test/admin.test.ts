@@ -1,90 +1,16 @@
 import { env, SELF } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
-
-const ORIGIN = 'http://example.com'
-const PASSWORD = 'password123'
-
-type SignedInUser = { id: string; cookie: string }
-
-function cookieHeader(response: Response): string {
-  const setCookies =
-    typeof response.headers.getSetCookie === 'function'
-      ? response.headers.getSetCookie()
-      : [response.headers.get('set-cookie') ?? '']
-
-  return setCookies
-    .map((value) => value.split(';')[0]?.trim())
-    .filter(Boolean)
-    .join('; ')
-}
-
-async function signUp(name: string, email: string): Promise<SignedInUser> {
-  const response = await SELF.fetch(`${ORIGIN}/api/auth/sign-up/email`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Origin: ORIGIN },
-    body: JSON.stringify({ name, email, password: PASSWORD }),
-  })
-
-  expect(response.status).toBe(200)
-  const body = await response.json<{ user: { id: string } }>()
-  return { id: body.user.id, cookie: cookieHeader(response) }
-}
-
-async function makeSystemAdmin(userId: string): Promise<void> {
-  await env.DB.prepare(`INSERT INTO system_admins (user_id) VALUES (?)`)
-    .bind(userId)
-    .run()
-}
-
-async function insertUser(id: string, name: string, email: string): Promise<void> {
-  await env.DB.prepare(
-    `INSERT INTO user (id, name, email, emailVerified, createdAt, updatedAt)
-     VALUES (?, ?, ?, 1, ?, ?)`,
-  )
-    .bind(id, name, email, new Date().toISOString(), new Date().toISOString())
-    .run()
-}
-
-async function insertSchool(id: string, name: string, code: string): Promise<void> {
-  await env.DB.prepare(
-    `INSERT INTO schools (id, name, school_code) VALUES (?, ?, ?)`,
-  )
-    .bind(id, name, code)
-    .run()
-}
-
-async function insertMember(
-  id: string,
-  schoolId: string,
-  userId: string,
-  role: string,
-  status: string,
-  createdAt: number,
-): Promise<void> {
-  await env.DB.prepare(
-    `INSERT INTO school_members (id, school_id, user_id, role, status, created_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  )
-    .bind(id, schoolId, userId, role, status, createdAt)
-    .run()
-}
-
-async function resetDatabase(): Promise<void> {
-  await env.DB.batch([
-    env.DB.prepare(`DELETE FROM audit_log`),
-    env.DB.prepare(`DELETE FROM system_admins`),
-    env.DB.prepare(`DELETE FROM school_members`),
-    env.DB.prepare(`DELETE FROM schools`),
-    env.DB.prepare(`DELETE FROM session`),
-    env.DB.prepare(`DELETE FROM account`),
-    env.DB.prepare(`DELETE FROM verification`),
-    env.DB.prepare(`DELETE FROM user`),
-  ])
-}
-
-function get(path: string, cookie: string): Promise<Response> {
-  return SELF.fetch(`${ORIGIN}${path}`, { headers: { Cookie: cookie } })
-}
+import {
+  get,
+  insertMember,
+  insertSchool,
+  insertUser,
+  makeSystemAdmin,
+  ORIGIN,
+  resetDatabase,
+  signUp,
+  type SignedInUser,
+} from './helpers'
 
 type MembershipBody = {
   memberships: {

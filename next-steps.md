@@ -7,7 +7,8 @@ Companion to `set-up.md` (the design brief) and `README.md` (current state).
 This file tracks **what to build next, in priority order**, with enough
 technical detail that either of us can pick an item up cold.
 
-Last updated: after the admin Users/Activity expansion and the docs + CI refresh.
+Last updated: after the tenant route test suites (schools, onboarding, employees,
+holidays, leave, travel, DTR).
 
 ---
 
@@ -36,6 +37,7 @@ Last updated: after the admin Users/Activity expansion and the docs + CI refresh
 | System admin console (users, schools, activity) | ✅ done (`AdminConsole.tsx`: bulk approval, filters, pagination, collapsible sidebar, toasts) |
 | Admin Users server-side filtering | ✅ done (`GET /api/admin/memberships` query + counts; debounced client fetch) |
 | Server typecheck + tests in CI | ✅ done (`.github/workflows/ci.yml`; `@cloudflare/vitest-plugin` + local D1) |
+| Tenant API route tests | ✅ done (`server/test/*.test.ts`: 75 tests across admin, schools, onboarding, employees, holidays, leave, travel, DTR + isolation) |
 
 ---
 
@@ -206,18 +208,20 @@ accepts `status`, `role`, `schoolId`, `q`, `limit`, and `offset`, and returns
 `{ memberships, total, counts }`. `UsersPage` debounces search and fetches one
 page at a time; tab badges use the server counts.
 
-**API tests.** ✅ started — `@cloudflare/vitest-plugin` runs `server/test/*`
-inside workerd against a migrated local D1. `test/admin.test.ts` covers
-system-admin auth, membership filters/pagination, approval + audit trail, and
-activity filters. Still to cover: schools/members, employees, holidays, leave,
-travels, and DTR routes (including tenant isolation).
+**API tests.** ✅ done — `@cloudflare/vitest-plugin` runs `server/test/*`
+inside workerd against a migrated local D1. Suites now cover system-admin auth
+and memberships (`admin.test.ts`), schools + members (`schools.test.ts`),
+onboarding (`onboarding.test.ts`), employees, holidays, leave types/credits/
+applications, official travels, and DTR periods/days. Every tenant suite asserts
+cross-school isolation with `404`s. Shared setup lives in `test/helpers.ts`.
+Remaining backend work: audit retention and the security pass below.
 
 **Audit retention.** `audit_log` grows unbounded. Decide on a retention window
 or an export/prune job before it becomes a problem.
 
 **Security pass.** Review rate limiting on auth and approval endpoints, confirm
-non-members still get `404` on every tenant route, and check that the Pages
-proxy does not forward unexpected headers.
+non-members still get `404` on every tenant route (now covered by tests), and
+check that the Pages proxy does not forward unexpected headers.
 
 ---
 
@@ -315,8 +319,8 @@ native-command error. Check the log for `✓ built`. Raising
 2. ~~**PH holiday preset**~~ ✅ done.
 3. ~~**Saved importer presets**~~ ✅ done.
 4. ~~**CSC fidelity**~~ ✅ verified by the AO.
-5. **Cloud follow-ups** — server-side Users filtering, API tests, then the
-   security pass (see §5).
+5. **Cloud follow-ups** — ~~server-side Users filtering~~ ✅, ~~API route tests~~ ✅;
+   next: audit retention + the security pass (see §5).
 6. **Product backlog** — remaining items under *Later*; pick based on real AO
    feedback rather than guessing.
 

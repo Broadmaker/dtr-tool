@@ -66,9 +66,21 @@ from `wrangler.jsonc`. `test/apply-migrations.ts` applies `migrations/*.sql`
 before the suite, so the schema always matches production. Auth is exercised
 through real Better Auth sign-up cookies; tests reset their tables per case.
 
-Current coverage lives in `test/admin.test.ts` (system-admin auth, membership
-filters/pagination, approval audit trail, activity filters). Add route suites
-beside it as more areas get tests.
+Current coverage lives in `test/`:
+
+| File | Covers |
+|---|---|
+| `admin.test.ts` | System-admin auth, membership filters/pagination, approval audit trail, activity filters |
+| `schools.test.ts` | School list/catalog scoping, create/update, member add/role/remove, owner protection |
+| `onboarding.test.ts` | Membership list, join/request flow, pending/active conflicts, re-request after rejection |
+| `employees.test.ts` | CRUD, search + wildcard escaping, activation, role gates |
+| `holidays.test.ts` | Global + school rows, year filter, write gates, global rows immutable |
+| `leaves.test.ts` | Leave types, credits upsert, application status machine, approver rights, credit sync |
+| `travels.test.ts` | CRUD, filters, date validation, role gates |
+| `dtr.test.ts` | Period status machine, day upsert/delete, locked periods, month bounds |
+
+Every tenant suite also asserts cross-school isolation (`404` for foreign rows).
+`test/helpers.ts` holds the shared sign-up/session/seed utilities.
 
 ## Endpoints
 
