@@ -27,8 +27,6 @@ const LEAVE_STATUSES = [
 
 type LeaveStatus = (typeof LEAVE_STATUSES)[number]
 
-const ALL_WRITE_OR_APPROVER = ["owner", "admin", "ao", "encoder"] as const
-
 const ALLOWED_TRANSITIONS: Record<LeaveStatus, LeaveStatus[]> = {
   draft: ["submitted", "cancelled"],
   submitted: ["approved", "rejected", "cancelled", "draft"],
@@ -437,7 +435,7 @@ leaves.get("/leave-applications/:applicationId", async (c) => {
 })
 
 leaves.patch("/leave-applications/:applicationId", async (c) => {
-  const membership = await requireSchool(c, ALL_WRITE_OR_APPROVER)
+  const membership = await requireSchool(c, WRITE_ROLES)
   const body = await readJson(c, applicationPatch)
   const applicationId = c.req.param("applicationId")
 

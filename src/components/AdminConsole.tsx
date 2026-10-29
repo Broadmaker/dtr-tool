@@ -180,23 +180,15 @@ function initials(name: string): string {
 const ROLE_CLASSES: Record<string, string> = {
   system_admin:
     'border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900/50 dark:bg-violet-950/30 dark:text-violet-300',
-  owner:
-    'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/30 dark:text-emerald-300',
-  admin:
-    'border-brand-200 bg-brand-50 text-brand-700 dark:border-brand-900/50 dark:bg-brand-950/40 dark:text-sky-300',
   ao:
     'border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900/50 dark:bg-sky-950/40 dark:text-sky-300',
-  encoder:
-    'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
-  viewer:
-    'border-slate-200 bg-slate-50 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300',
 };
 
 function roleMeta(role: string) {
   return {
     label: roleLabel(role),
     short: roleShortLabel(role),
-    className: ROLE_CLASSES[role] ?? ROLE_CLASSES.viewer,
+    className: ROLE_CLASSES[role] ?? ROLE_CLASSES.ao,
   };
 }
 
@@ -225,11 +217,6 @@ const USER_STATUS_TABS: { id: CloudMembershipStatus | 'all'; label: string }[] =
 const USER_ROLE_OPTIONS: { id: string; label: string }[] = [
   { id: 'all', label: 'All roles' },
   { id: 'ao', label: roleLabel('ao') },
-  { id: 'admin', label: roleLabel('admin') },
-  { id: 'owner', label: roleLabel('owner') },
-  { id: 'encoder', label: roleLabel('encoder') },
-  { id: 'viewer', label: roleLabel('viewer') },
-  { id: 'system_admin', label: roleLabel('system_admin') },
 ];
 
 const STATUS_META: Record<
@@ -2027,7 +2014,7 @@ export default function AdminConsole({
       onAdminChange(next.isSystemAdmin);
       setPassword('');
       if (!next.isSystemAdmin) {
-        setError('This account is not a system admin.');
+        setError('This account is not a super admin.');
       }
     } catch (cause) {
       setError(errorText(cause));
@@ -2065,9 +2052,9 @@ export default function AdminConsole({
             <span className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-slate-900 text-white dark:bg-white dark:text-slate-900">
               <ShieldCheck className="h-5 w-5" />
             </span>
-            <h1 className="mt-4 text-lg font-semibold tracking-tight">System administration</h1>
+            <h1 className="mt-4 text-lg font-semibold tracking-tight">Super admin</h1>
             <p className="mt-1 text-[13px] leading-relaxed text-slate-600 dark:text-slate-300">
-              Sign in with an account that has system admin access.
+              Sign in with an account that has super admin access.
             </p>
           </div>
 
@@ -2113,7 +2100,7 @@ export default function AdminConsole({
           </span>
           <h1 className="mt-4 text-lg font-semibold tracking-tight">Not authorized</h1>
           <p className="mt-1 text-[13px] leading-relaxed text-slate-600 dark:text-slate-300">
-            {session.user.email} does not have system admin access.
+            {session.user.email} does not have super admin access.
           </p>
           <ErrorNotice message={error} />
           <div className="mt-4 flex flex-wrap justify-center gap-2">
@@ -2232,7 +2219,7 @@ export default function AdminConsole({
                   {session.user.email}
                 </p>
                 <p className="mt-1 flex items-center gap-1 text-[10px] font-medium uppercase tracking-[0.08em] text-slate-500 dark:text-slate-400">
-                  <ShieldCheck className="h-3 w-3" /> System admin
+                  <ShieldCheck className="h-3 w-3" /> Super admin
                 </p>
               </div>
             )}
@@ -2306,7 +2293,7 @@ export default function AdminConsole({
           <div className="mx-auto flex h-16 max-w-[1400px] items-center gap-4 px-6">
             <div className="min-w-0">
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-                System administration
+                Super admin
               </p>
               <h1 className="truncate text-lg font-semibold tracking-tight">{meta.title}</h1>
             </div>
@@ -2326,7 +2313,7 @@ export default function AdminConsole({
           <div className="mb-5 flex items-end gap-3 lg:hidden">
             <div className="min-w-0 flex-1">
               <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
-                System administration
+                Super admin
               </p>
               <h1 className="truncate text-lg font-semibold tracking-tight">{meta.title}</h1>
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">{meta.subtitle}</p>

@@ -485,9 +485,20 @@ export default function App() {
 
     const roster = await listEmployees(schoolId, { includeInactive: true });
     const normalize = (value: string) => value.toLowerCase().replace(/\s+/g, ' ').trim();
+    const displayNameByKey = new Map<string, string>();
+    const infoByKey = new Map<string, Partial<EmployeeInfo>>();
+    for (const employee of effectiveEmployees) {
+      const info = empInfos[employee.name] ?? {};
+      const display = info.name ?? employee.name;
+      displayNameByKey.set(normalize(display), display);
+      infoByKey.set(normalize(display), info);
+    }
+
     let saved = 0;
     let skipped = 0;
+    let inactive = 0;
     let created = 0;
+    let updated = 0;
 
     for (const bundle of list) {
       const full = normalize(bundle.info.name);
@@ -495,9 +506,11 @@ export default function App() {
         roster.find((item) =>
           normalize([item.firstName, item.middleName ?? '', item.lastName].join(' ')) === full,
         ) ?? roster.find((item) => normalize(`${item.firstName} ${item.lastName}`) === full);
+      const info = infoByKey.get(full) ?? {};
 
       if (!employee) {
-        const parts = bundle.info.name.trim().split(/\s+/).filter(Boolean);
+        const display = displayNameByKey.get(full) ?? bundle.info.name;
+        const parts = display.trim().split(/\s+/).filter(Boolean);
         const firstName = parts[0] || 'Employee';
         const lastName = parts.length > 1 ? parts[parts.length - 1] : firstName;
         const middleName = parts.length > 2 ? parts.slice(1, -1).join(' ') : null;
@@ -505,15 +518,22 @@ export default function App() {
           firstName,
           lastName,
           middleName,
-          position: bundle.info.position || null,
+          position: info.position?.trim() || bundle.info.position || null,
         });
         roster.push(employee);
         created += 1;
       } else if (!employee.isActive) {
-        const updated = await updateEmployee(schoolId, employee.id, { isActive: true });
-        employee = updated;
-        const index = roster.findIndex((item) => item.id === updated.id);
-        if (index >= 0) roster[index] = updated;
+        inactive += 1;
+        continue;
+      } else {
+        const position = info.position?.trim();
+        if (position && position !== employee.position) {
+          const updatedEmployee = await updateEmployee(schoolId, employee.id, { position });
+          employee = updatedEmployee;
+          const index = roster.findIndex((item) => item.id === updatedEmployee.id);
+          if (index >= 0) roster[index] = updatedEmployee;
+          updated += 1;
+        }
       }
 
       const periods = await listDtrPeriods(schoolId, {
@@ -533,8 +553,8 @@ export default function App() {
       saved += 1;
     }
 
-    return { saved, skipped, created };
-  }, [bundles, month, year]);
+    return { saved, skipped, created, updated, inactive };
+  }, [bundles, effectiveEmployees, empInfos, month, year]);
 
   const stamp = `${monthName(month).toLowerCase()}_${year}`;
   const base = (prefs.fileBase || 'DTR').replace(/[\\/?*[\]:]/g, '_').slice(0, 40) || 'DTR';

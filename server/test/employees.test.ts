@@ -30,13 +30,11 @@ type EmployeeList = { employees: Employee[] }
 describe('employees', () => {
   let systemAdmin: SignedInUser
   let ao: SignedInUser
-  let viewer: SignedInUser
   let outsider: SignedInUser
 
   beforeAll(async () => {
-    systemAdmin = await signUp('System Admin', 'sysadmin@example.com')
+    systemAdmin = await signUp('Super Admin', 'sysadmin@example.com')
     ao = await signUp('AO One', 'ao@example.com')
-    viewer = await signUp('Viewer One', 'viewer@example.com')
     outsider = await signUp('Outsider One', 'outsider@example.com')
   })
 
@@ -48,7 +46,6 @@ describe('employees', () => {
     await insertSchool('s-2', 'Beta Elementary', '100002')
 
     await insertMember('m-ao', 's-1', ao.id, 'ao')
-    await insertMember('m-viewer', 's-1', viewer.id, 'viewer')
     await insertMember('m-outsider', 's-2', outsider.id, 'ao')
 
     await insertEmployee('e-1', 's-1', 'Ana', 'Cruz', {
@@ -67,12 +64,12 @@ describe('employees', () => {
     expect(
       (await get('/api/schools/s-1/employees', outsider.cookie)).status,
     ).toBe(404)
-    expect((await get('/api/schools/s-1/employees', viewer.cookie)).status).toBe(200)
+    expect((await get('/api/schools/s-1/employees', ao.cookie)).status).toBe(200)
   })
 
   it('lists active employees in name order by default', async () => {
     const body = await (
-      await get('/api/schools/s-1/employees', viewer.cookie)
+      await get('/api/schools/s-1/employees', ao.cookie)
     ).json<EmployeeList>()
 
     expect(body.employees.map((employee) => employee.id)).toEqual(['e-1'])
@@ -86,7 +83,7 @@ describe('employees', () => {
 
   it('can include inactive employees', async () => {
     const body = await (
-      await get('/api/schools/s-1/employees?includeInactive=true', viewer.cookie)
+      await get('/api/schools/s-1/employees?includeInactive=true', ao.cookie)
     ).json<EmployeeList>()
 
     expect(body.employees.map((employee) => employee.id)).toEqual(['e-1', 'e-2'])
@@ -95,30 +92,30 @@ describe('employees', () => {
 
   it('searches by name and employee number with literal wildcards', async () => {
     const byName = await (
-      await get('/api/schools/s-1/employees?search=an', viewer.cookie)
+      await get('/api/schools/s-1/employees?search=an', ao.cookie)
     ).json<EmployeeList>()
     expect(byName.employees.map((employee) => employee.id)).toEqual(['e-1'])
 
     const byLastName = await (
-      await get('/api/schools/s-1/employees?search=Cruz', viewer.cookie)
+      await get('/api/schools/s-1/employees?search=Cruz', ao.cookie)
     ).json<EmployeeList>()
     expect(byLastName.employees.map((employee) => employee.id)).toEqual(['e-1'])
 
     const byNumber = await (
       await get(
         '/api/schools/s-1/employees?search=EMPX&includeInactive=true',
-        viewer.cookie,
+        ao.cookie,
       )
     ).json<EmployeeList>()
     expect(byNumber.employees.map((employee) => employee.id)).toEqual(['e-2'])
 
     const underscore = await (
-      await get('/api/schools/s-1/employees?search=EMP_', viewer.cookie)
+      await get('/api/schools/s-1/employees?search=EMP_', ao.cookie)
     ).json<EmployeeList>()
     expect(underscore.employees.map((employee) => employee.id)).toEqual(['e-1'])
 
     const wildcard = await (
-      await get('/api/schools/s-1/employees?search=%25', viewer.cookie)
+      await get('/api/schools/s-1/employees?search=%25', ao.cookie)
     ).json<EmployeeList>()
     expect(wildcard.employees).toEqual([])
   })
@@ -160,15 +157,7 @@ describe('employees', () => {
     expect(invalid.status).toBe(400)
   })
 
-  it('blocks viewers from writing', async () => {
-    const response = await post('/api/schools/s-1/employees', viewer.cookie, {
-      firstName: 'Blocked',
-      lastName: 'Writer',
-    })
-    expect(response.status).toBe(403)
-  })
-
-  it('lets a system admin write to any school', async () => {
+  it('lets a super admin write to any school', async () => {
     const response = await post('/api/schools/s-2/employees', systemAdmin.cookie, {
       firstName: 'Admin',
       lastName: 'Added',
@@ -189,7 +178,7 @@ describe('employees', () => {
       isActive: false,
     })
 
-    const read = await get('/api/schools/s-1/employees/e-1', viewer.cookie)
+    const read = await get('/api/schools/s-1/employees/e-1', ao.cookie)
     expect((await read.json<{ employee: Employee }>()).employee.isActive).toBe(false)
 
     expect(

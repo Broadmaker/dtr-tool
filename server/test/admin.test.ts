@@ -43,9 +43,9 @@ describe('admin memberships', () => {
     await insertSchool('s-2', 'Beta Elementary', '100002')
 
     await insertMember('m-1', 's-1', 'u-ana', 'ao', 'pending', 100)
-    await insertMember('m-2', 's-1', 'u-ben', 'admin', 'active', 200)
+    await insertMember('m-2', 's-1', 'u-ben', 'ao', 'active', 200)
     await insertMember('m-3', 's-2', 'u-cara', 'ao', 'active', 300)
-    await insertMember('m-4', 's-2', 'u-dan', 'viewer', 'rejected', 400)
+    await insertMember('m-4', 's-2', 'u-dan', 'ao', 'rejected', 400)
   })
 
   it('rejects unauthenticated callers', async () => {
@@ -79,8 +79,16 @@ describe('admin memberships', () => {
   })
 
   it('filters by role, school, and search text', async () => {
-    const byRole = await get('/api/admin/memberships?role=admin', admin.cookie)
-    expect((await byRole.json<MembershipBody>()).memberships.map((row) => row.id)).toEqual(['m-2'])
+    const byRole = await get('/api/admin/memberships?role=ao', admin.cookie)
+    expect((await byRole.json<MembershipBody>()).memberships.map((row) => row.id)).toEqual([
+      'm-1',
+      'm-3',
+      'm-2',
+      'm-4',
+    ])
+
+    const legacyRole = await get('/api/admin/memberships?role=admin', admin.cookie)
+    expect((await legacyRole.json<MembershipBody>()).total).toBe(0)
 
     const bySchool = await get('/api/admin/memberships?schoolId=s-2', admin.cookie)
     expect((await bySchool.json<MembershipBody>()).memberships.map((row) => row.id)).toEqual([

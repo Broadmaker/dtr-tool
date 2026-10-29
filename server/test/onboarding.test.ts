@@ -38,7 +38,7 @@ describe('onboarding', () => {
     await insertSchool('s-2', 'Beta Elementary', '100002')
 
     await insertMember('m-active', 's-1', activeMember.id, 'ao')
-    await insertMember('m-rejected', 's-2', rejectedMember.id, 'encoder', 'rejected')
+    await insertMember('m-rejected', 's-2', rejectedMember.id, 'ao', 'rejected')
   })
 
   it('requires a session', async () => {
@@ -119,7 +119,7 @@ describe('onboarding', () => {
     const body = await response.json<{ membership: Membership }>()
     expect(body.membership).toMatchObject({
       id: 'm-rejected',
-      role: 'encoder',
+      role: 'ao',
       status: 'pending',
     })
 

@@ -49,15 +49,11 @@ type Credit = {
 describe('leave management', () => {
   let systemAdmin: SignedInUser
   let ao: SignedInUser
-  let encoder: SignedInUser
-  let viewer: SignedInUser
   let outsider: SignedInUser
 
   beforeAll(async () => {
     systemAdmin = await signUp('System Admin', 'sysadmin@example.com')
     ao = await signUp('AO One', 'ao@example.com')
-    encoder = await signUp('Encoder One', 'encoder@example.com')
-    viewer = await signUp('Viewer One', 'viewer@example.com')
     outsider = await signUp('Outsider One', 'outsider@example.com')
   })
 
@@ -69,8 +65,6 @@ describe('leave management', () => {
     await insertSchool('s-2', 'Beta Elementary', '100002')
 
     await insertMember('m-ao', 's-1', ao.id, 'ao')
-    await insertMember('m-encoder', 's-1', encoder.id, 'encoder')
-    await insertMember('m-viewer', 's-1', viewer.id, 'viewer')
     await insertMember('m-outsider', 's-2', outsider.id, 'ao')
 
     await insertEmployee('e-1', 's-1', 'Ana', 'Cruz')
@@ -111,7 +105,7 @@ describe('leave management', () => {
     expect(
       (await get('/api/schools/s-1/leave-types', outsider.cookie)).status,
     ).toBe(404)
-    expect((await get('/api/schools/s-1/leave-types', viewer.cookie)).status).toBe(200)
+    expect((await get('/api/schools/s-1/leave-types', ao.cookie)).status).toBe(200)
   })
 
   it('lists global and school leave types', async () => {
@@ -126,7 +120,7 @@ describe('leave management', () => {
     ).toMatchObject({ code: 'WW', schoolId: 's-1', requiresCredits: false })
 
     const body = await (
-      await get('/api/schools/s-1/leave-types', viewer.cookie)
+      await get('/api/schools/s-1/leave-types', ao.cookie)
     ).json<{ leaveTypes: LeaveType[] }>()
 
     const codes = body.leaveTypes.map((type) => type.code)
@@ -219,7 +213,7 @@ describe('leave management', () => {
 
     const reread = await get(
       '/api/schools/s-1/employees/e-1/leave-credits?year=2026',
-      viewer.cookie,
+      ao.cookie,
     )
     const rereadCredits = (await reread.json<{ credits: Credit[] }>()).credits
     expect(rereadCredits.find((credit) => credit.code === 'VL')).toMatchObject({
@@ -248,16 +242,7 @@ describe('leave management', () => {
     ).toBe(404)
 
     expect(
-      (
-        await put('/api/schools/s-1/employees/e-1/leave-credits', viewer.cookie, {
-          year: 2026,
-          entries: [],
-        })
-      ).status,
-    ).toBe(403)
-
-    expect(
-      (await get('/api/schools/s-1/employees/e-1/leave-credits', viewer.cookie))
+      (await get('/api/schools/s-1/employees/e-1/leave-credits', ao.cookie))
         .status,
     ).toBe(400)
   })
@@ -271,7 +256,7 @@ describe('leave management', () => {
       filedAt: null,
     })
 
-    const submitted = await createApplication(encoder.cookie, {
+    const submitted = await createApplication(ao.cookie, {
       status: 'submitted',
       remarks: 'Family trip',
     })
@@ -309,23 +294,11 @@ describe('leave management', () => {
       days: 1,
     })
     expect(foreignType.status).toBe(404)
-
-    const viewerCreate = await post('/api/schools/s-1/leave-applications', viewer.cookie, {
-      employeeId: 'e-1',
-      leaveTypeId: 'lt-global-vl',
-      startDate: '2026-03-05',
-      endDate: '2026-03-05',
-      days: 1,
-    })
-    expect(viewerCreate.status).toBe(403)
   })
 
-  it('enforces the status machine and approver role', async () => {
+  it('enforces the status machine', async () => {
     const application = await createApplication(ao.cookie, { status: 'submitted' })
     const path = `/api/schools/s-1/leave-applications/${application.id}`
-
-    const encoderApprove = await patch(path, encoder.cookie, { status: 'approved' })
-    expect(encoderApprove.status).toBe(403)
 
     const approved = await patch(path, ao.cookie, { status: 'approved' })
     expect(approved.status).toBe(200)
@@ -360,7 +333,7 @@ describe('leave management', () => {
       await (
         await get(
           '/api/schools/s-1/employees/e-1/leave-credits?year=2026',
-          viewer.cookie,
+          ao.cookie,
         )
       ).json<{ credits: Credit[] }>()
     ).credits
@@ -371,7 +344,7 @@ describe('leave management', () => {
       await (
         await get(
           '/api/schools/s-1/employees/e-1/leave-credits?year=2026',
-          viewer.cookie,
+          ao.cookie,
         )
       ).json<{ credits: Credit[] }>()
     ).credits
@@ -392,21 +365,21 @@ describe('leave management', () => {
     })
 
     const all = await (
-      await get('/api/schools/s-1/leave-applications', viewer.cookie)
+      await get('/api/schools/s-1/leave-applications', ao.cookie)
     ).json<{ applications: LeaveApplication[] }>()
     expect(all.applications.map((application) => application.id).sort()).toEqual(
       [draft.id, submitted.id].sort(),
     )
 
     const byStatus = await (
-      await get('/api/schools/s-1/leave-applications?status=submitted', viewer.cookie)
+      await get('/api/schools/s-1/leave-applications?status=submitted', ao.cookie)
     ).json<{ applications: LeaveApplication[] }>()
     expect(byStatus.applications.map((application) => application.id)).toEqual([
       submitted.id,
     ])
 
     const byYear = await (
-      await get('/api/schools/s-1/leave-applications?year=2026', viewer.cookie)
+      await get('/api/schools/s-1/leave-applications?year=2026', ao.cookie)
     ).json<{ applications: LeaveApplication[] }>()
     expect(byYear.applications.map((application) => application.id)).toEqual([
       draft.id,
@@ -415,7 +388,7 @@ describe('leave management', () => {
     const byEmployee = await (
       await get(
         '/api/schools/s-1/leave-applications?employeeId=e-1&year=2025',
-        viewer.cookie,
+        ao.cookie,
       )
     ).json<{ applications: LeaveApplication[] }>()
     expect(byEmployee.applications.map((application) => application.id)).toEqual([
@@ -431,11 +404,11 @@ describe('leave management', () => {
     ).run()
 
     expect(
-      (await get('/api/schools/s-1/leave-applications/la-s2', viewer.cookie)).status,
+      (await get('/api/schools/s-1/leave-applications/la-s2', ao.cookie)).status,
     ).toBe(404)
 
     const list = await (
-      await get('/api/schools/s-1/leave-applications', viewer.cookie)
+      await get('/api/schools/s-1/leave-applications', ao.cookie)
     ).json<{ applications: LeaveApplication[] }>()
     expect(list.applications.map((application) => application.id)).not.toContain(
       'la-s2',

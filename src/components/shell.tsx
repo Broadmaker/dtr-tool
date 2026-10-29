@@ -77,7 +77,7 @@ export const TopBar = memo(function TopBar({
               variant="ghost"
               onClick={onAdmin}
               aria-label="Open admin console"
-              title="System administration"
+              title="Super admin"
             >
               <ShieldCheck className="h-3.5 w-3.5" />
               <span className="hidden md:inline">Admin</span>

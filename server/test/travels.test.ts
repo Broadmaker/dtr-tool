@@ -53,13 +53,11 @@ async function insertTravel(
 describe('official travels', () => {
   let systemAdmin: SignedInUser
   let ao: SignedInUser
-  let viewer: SignedInUser
   let outsider: SignedInUser
 
   beforeAll(async () => {
     systemAdmin = await signUp('System Admin', 'sysadmin@example.com')
     ao = await signUp('AO One', 'ao@example.com')
-    viewer = await signUp('Viewer One', 'viewer@example.com')
     outsider = await signUp('Outsider One', 'outsider@example.com')
   })
 
@@ -71,7 +69,6 @@ describe('official travels', () => {
     await insertSchool('s-2', 'Beta Elementary', '100002')
 
     await insertMember('m-ao', 's-1', ao.id, 'ao')
-    await insertMember('m-viewer', 's-1', viewer.id, 'viewer')
     await insertMember('m-outsider', 's-2', outsider.id, 'ao')
 
     await insertEmployee('e-1', 's-1', 'Ana', 'Cruz')
@@ -93,12 +90,12 @@ describe('official travels', () => {
   it('requires a session and membership', async () => {
     expect((await api('/api/schools/s-1/travels')).status).toBe(401)
     expect((await get('/api/schools/s-1/travels', outsider.cookie)).status).toBe(404)
-    expect((await get('/api/schools/s-1/travels', viewer.cookie)).status).toBe(200)
+    expect((await get('/api/schools/s-1/travels', ao.cookie)).status).toBe(200)
   })
 
   it('lists school travels in reverse date order', async () => {
     const body = await (
-      await get('/api/schools/s-1/travels', viewer.cookie)
+      await get('/api/schools/s-1/travels', ao.cookie)
     ).json<TravelList>()
 
     expect(body.travels.map((travel) => travel.id)).toEqual(['t-2', 't-1'])
@@ -112,17 +109,17 @@ describe('official travels', () => {
 
   it('filters by year, employee, and status', async () => {
     const byStatus = await (
-      await get('/api/schools/s-1/travels?status=planned', viewer.cookie)
+      await get('/api/schools/s-1/travels?status=planned', ao.cookie)
     ).json<TravelList>()
     expect(byStatus.travels.map((travel) => travel.id)).toEqual(['t-1'])
 
     const byYear = await (
-      await get('/api/schools/s-1/travels?year=2026', viewer.cookie)
+      await get('/api/schools/s-1/travels?year=2026', ao.cookie)
     ).json<TravelList>()
     expect(byYear.travels.map((travel) => travel.id)).toEqual(['t-2', 't-1'])
 
     const byEmployee = await (
-      await get('/api/schools/s-1/travels?employeeId=e-1&status=approved', viewer.cookie)
+      await get('/api/schools/s-1/travels?employeeId=e-1&status=approved', ao.cookie)
     ).json<TravelList>()
     expect(byEmployee.travels.map((travel) => travel.id)).toEqual(['t-2'])
   })
@@ -165,15 +162,6 @@ describe('official travels', () => {
       days: 1,
     })
     expect(foreignEmployee.status).toBe(404)
-
-    const viewerCreate = await post('/api/schools/s-1/travels', viewer.cookie, {
-      employeeId: 'e-1',
-      destination: 'Blocked',
-      startDate: '2026-07-04',
-      endDate: '2026-07-05',
-      days: 1,
-    })
-    expect(viewerCreate.status).toBe(403)
   })
 
   it('updates and deletes travels', async () => {
@@ -216,7 +204,7 @@ describe('official travels', () => {
     expect((await del('/api/schools/s-1/travels/t-s2', ao.cookie)).status).toBe(404)
   })
 
-  it('lets a system admin manage any school', async () => {
+  it('lets a super admin manage any school', async () => {
     const body = await (
       await get('/api/schools/s-2/travels', systemAdmin.cookie)
     ).json<TravelList>()

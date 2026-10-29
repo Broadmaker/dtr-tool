@@ -1,19 +1,11 @@
 const ROLE_LABELS: Record<string, string> = {
-  system_admin: 'System administrator',
-  owner: 'School owner',
-  admin: 'School administrator',
+  system_admin: 'Super admin',
   ao: 'Administrative Officer II',
-  encoder: 'Encoder',
-  viewer: 'Viewer',
 };
 
 const ROLE_SHORT_LABELS: Record<string, string> = {
-  system_admin: 'System admin',
-  owner: 'Owner',
-  admin: 'Administrator',
+  system_admin: 'Super admin',
   ao: 'AO II',
-  encoder: 'Encoder',
-  viewer: 'Viewer',
 };
 
 function fallbackLabel(role: string): string {

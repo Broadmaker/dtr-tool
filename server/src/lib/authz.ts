@@ -2,35 +2,14 @@ import type { Context } from "hono"
 import { HTTPException } from "hono/http-exception"
 import type { AppEnv } from "../middleware/session"
 
-export const ALL_ROLES = [
-  "owner",
-  "admin",
-  "ao",
-  "encoder",
-  "viewer",
-] as const
+export const ALL_ROLES = ["ao"] as const
 
 export type SchoolRole = (typeof ALL_ROLES)[number]
 export type EffectiveRole = SchoolRole | "system_admin"
 
-export const ADMIN_ROLES: readonly EffectiveRole[] = [
-  "owner",
-  "admin",
-  "system_admin",
-]
-export const APPROVER_ROLES: readonly EffectiveRole[] = [
-  "owner",
-  "admin",
-  "ao",
-  "system_admin",
-]
-export const WRITE_ROLES: readonly EffectiveRole[] = [
-  "owner",
-  "admin",
-  "ao",
-  "encoder",
-  "system_admin",
-]
+export const ADMIN_ROLES: readonly EffectiveRole[] = ["system_admin"]
+export const APPROVER_ROLES: readonly EffectiveRole[] = ["ao", "system_admin"]
+export const WRITE_ROLES: readonly EffectiveRole[] = ["ao", "system_admin"]
 
 export type Membership = {
   schoolId: string
@@ -55,7 +34,7 @@ export async function isSystemAdmin(c: Context<AppEnv>): Promise<boolean> {
 
 export async function assertSystemAdmin(c: Context<AppEnv>): Promise<void> {
   if (!(await isSystemAdmin(c))) {
-    throw new HTTPException(403, { message: "System admin access required" })
+    throw new HTTPException(403, { message: "Super admin access required" })
   }
 }
 

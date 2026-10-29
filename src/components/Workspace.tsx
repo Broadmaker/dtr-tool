@@ -14,6 +14,7 @@ import {
   Menu,
   PanelLeftClose,
   PanelLeftOpen,
+  Pencil,
   Plane,
   Plus,
   RefreshCw,
@@ -85,7 +86,13 @@ type Props = {
   onAdminChange: (value: boolean) => void;
   onOpenAdmin: () => void;
   onImportHolidays: (holidays: LocalHoliday[]) => void;
-  onSaveDtr: (schoolId: string) => Promise<{ saved: number; skipped: number; created: number }>;
+  onSaveDtr: (schoolId: string) => Promise<{
+    saved: number;
+    skipped: number;
+    created: number;
+    updated: number;
+    inactive: number;
+  }>;
 };
 
 const SCHOOL_KEY = 'dtr.cloud.school';
@@ -106,8 +113,8 @@ function readAdminSchoolId(): string {
     return '';
   }
 }
-const WRITE_ROLES = ['owner', 'admin', 'ao', 'encoder', 'system_admin'];
-const APPROVER_ROLES = ['owner', 'admin', 'ao', 'system_admin'];
+const WRITE_ROLES = ['ao', 'system_admin'];
+const APPROVER_ROLES = ['ao', 'system_admin'];
 
 const TABS: { id: Tab; label: string; icon: typeof Users; description: string }[] = [
   {
@@ -286,8 +293,11 @@ export default function Workspace({
   const [employeesLoading, setEmployeesLoading] = useState(false);
   const [empSearch, setEmpSearch] = useState('');
   const [showEmpForm, setShowEmpForm] = useState(false);
+  const [editingEmpId, setEditingEmpId] = useState<string | null>(null);
   const [empFirst, setEmpFirst] = useState('');
+  const [empMiddle, setEmpMiddle] = useState('');
   const [empLast, setEmpLast] = useState('');
+  const [empSuffix, setEmpSuffix] = useState('');
   const [empNo, setEmpNo] = useState('');
   const [empPosition, setEmpPosition] = useState('');
 
@@ -332,7 +342,7 @@ export default function Workspace({
   const [saveResult, setSaveResult] = useState('');
 
   const school = schools.find((item) => item.id === schoolId) ?? null;
-  const role = school?.role ?? 'viewer';
+  const role = school?.role ?? 'guest';
   const canWrite = WRITE_ROLES.includes(role);
   const canApprove = APPROVER_ROLES.includes(role);
   const showJoin = joinOpen || (!isSystemAdmin && schools.length === 0);
@@ -754,7 +764,7 @@ export default function Workspace({
         ...current.filter((item) => item.schoolId !== membership.schoolId),
         membership,
       ]);
-      setNotice(`Requested access to ${entry.name}. A system admin will review it.`);
+      setNotice(`Requested access to ${entry.name}. A super admin will review it.`);
     } catch (cause) {
       fail(cause);
     } finally {
@@ -776,13 +786,52 @@ export default function Workspace({
         setJoinOpen(false);
         setNotice('School access granted.');
       } else {
-        setNotice('Still waiting for a system admin to approve your request.');
+        setNotice('Still waiting for a super admin to approve your request.');
       }
     } catch (cause) {
       fail(cause);
     } finally {
       setMembershipsLoading(false);
     }
+  };
+
+  const resetEmpForm = () => {
+    setEditingEmpId(null);
+    setEmpFirst('');
+    setEmpMiddle('');
+    setEmpLast('');
+    setEmpSuffix('');
+    setEmpNo('');
+    setEmpPosition('');
+    setShowEmpForm(false);
+  };
+
+  const openAddEmployee = () => {
+    if (showEmpForm) {
+      resetEmpForm();
+      return;
+    }
+    setEditingEmpId(null);
+    setEmpFirst('');
+    setEmpMiddle('');
+    setEmpLast('');
+    setEmpSuffix('');
+    setEmpNo('');
+    setEmpPosition('');
+    setShowEmpForm(true);
+  };
+
+  const startEditEmployee = (employee: CloudEmployee) => {
+    setEditingEmpId(employee.id);
+    setEmpFirst(employee.firstName);
+    setEmpMiddle(employee.middleName ?? '');
+    setEmpLast(employee.lastName);
+    setEmpSuffix(employee.suffix ?? '');
+    setEmpNo(employee.employeeNo ?? '');
+    setEmpPosition(employee.position ?? '');
+    setShowEmpForm(true);
+    setError('');
+    setNotice('');
   };
 
   const submitEmployee = async (event: FormEvent) => {
@@ -796,19 +845,23 @@ export default function Workspace({
     setError('');
     setNotice('');
     try {
-      await createEmployee(schoolId, {
+      const input = {
         firstName: empFirst.trim(),
         lastName: empLast.trim(),
+        middleName: empMiddle.trim() || null,
+        suffix: empSuffix.trim() || null,
         employeeNo: empNo.trim() || null,
         position: empPosition.trim() || null,
-      });
-      setEmpFirst('');
-      setEmpLast('');
-      setEmpNo('');
-      setEmpPosition('');
-      setShowEmpForm(false);
+      };
+      if (editingEmpId) {
+        await updateEmployee(schoolId, editingEmpId, input);
+        setNotice('Employee updated.');
+      } else {
+        await createEmployee(schoolId, input);
+        setNotice('Employee added.');
+      }
+      resetEmpForm();
       await loadEmployees(schoolId);
-      setNotice('Employee added.');
     } catch (cause) {
       fail(cause);
     } finally {
@@ -1096,11 +1149,17 @@ export default function Workspace({
       const created = result.created
         ? ` Added ${result.created} employee${result.created === 1 ? '' : 's'} to the roster.`
         : '';
+      const updated = result.updated
+        ? ` Updated ${result.updated} roster record${result.updated === 1 ? '' : 's'}.`
+        : '';
+      const inactive = result.inactive
+        ? ` Skipped ${result.inactive} inactive employee${result.inactive === 1 ? '' : 's'} — reactivate them in the roster to save their DTR.`
+        : '';
       const skipped = result.skipped
         ? ` Skipped ${result.skipped} approved or locked period${result.skipped === 1 ? '' : 's'}.`
         : '';
       setSaveResult(
-        `Saved ${result.saved} DTR${result.saved === 1 ? '' : 's'}.${created}${skipped}`,
+        `Saved ${result.saved} DTR${result.saved === 1 ? '' : 's'}.${updated}${created}${inactive}${skipped}`,
       );
       await loadPeriods(schoolId);
     } catch (cause) {
@@ -1134,7 +1193,7 @@ export default function Workspace({
       <div>
         <h3 className="text-sm font-semibold">Join a school</h3>
         <p className="mt-1 text-[13px] leading-relaxed text-slate-600 dark:text-slate-300">
-          Choose your school from the official list. A system admin will approve your
+          Choose your school from the official list. A super admin will approve your
           request before the workspace opens.
         </p>
       </div>
@@ -1191,7 +1250,7 @@ export default function Workspace({
         {catalogLoading ? null : filteredCatalog.length === 0 ? (
           <p className="py-4 text-center text-sm text-slate-500 dark:text-slate-400">
             {catalog.length === 0
-              ? 'No schools have been added yet. Contact the system admin.'
+              ? 'No schools have been added yet. Contact the super admin.'
               : 'No schools match that search.'}
           </p>
         ) : (
@@ -1416,7 +1475,7 @@ export default function Workspace({
                 </p>
                 {isSystemAdmin && (
                   <span className="mt-1 inline-flex rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 dark:bg-indigo-950/40 dark:text-indigo-200">
-                    system admin
+                    super admin
                   </span>
                 )}
               </div>
@@ -1650,7 +1709,7 @@ export default function Workspace({
                       <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-800">
                         <div className="flex items-center gap-2">
                           <p className="truncate text-sm font-semibold">{user.name}</p>
-                          {isSystemAdmin && <Badge tone="brand">system admin</Badge>}
+                          {isSystemAdmin && <Badge tone="brand">super admin</Badge>}
                         </div>
                         <p className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400">
                           {user.email}
@@ -1905,7 +1964,7 @@ export default function Workspace({
                               <Btn
                                 size="sm"
                                 variant="primary"
-                                onClick={() => setShowEmpForm((value) => !value)}
+                                onClick={openAddEmployee}
                                 disabled={!canWrite}
                               >
                                 <Plus className="h-3.5 w-3.5" /> Add employee
@@ -1932,11 +1991,24 @@ export default function Workspace({
                                     required
                                   />
                                 </Field>
+                                <Field label="Middle name" hint="optional">
+                                  <TextInput
+                                    value={empMiddle}
+                                    onChange={(event) => setEmpMiddle(event.target.value)}
+                                  />
+                                </Field>
                                 <Field label="Last name">
                                   <TextInput
                                     value={empLast}
                                     onChange={(event) => setEmpLast(event.target.value)}
                                     required
+                                  />
+                                </Field>
+                                <Field label="Suffix" hint="optional">
+                                  <TextInput
+                                    value={empSuffix}
+                                    onChange={(event) => setEmpSuffix(event.target.value)}
+                                    placeholder="Jr., Sr., III"
                                   />
                                 </Field>
                                 <Field label="Employee no." hint="optional">
@@ -1954,9 +2026,9 @@ export default function Workspace({
                                 </Field>
                                 <div className="flex gap-2 sm:col-span-2">
                                   <Btn type="submit" variant="primary" size="sm" disabled={busy}>
-                                    Add
+                                    {editingEmpId ? 'Save changes' : 'Add'}
                                   </Btn>
-                                  <Btn variant="ghost" size="sm" onClick={() => setShowEmpForm(false)}>
+                                  <Btn variant="ghost" size="sm" onClick={resetEmpForm}>
                                     Cancel
                                   </Btn>
                                 </div>
@@ -1992,14 +2064,24 @@ export default function Workspace({
                                       {employee.isActive ? 'Active' : 'Inactive'}
                                     </Badge>
                                     {canWrite && (
-                                      <Btn
-                                        size="xs"
-                                        variant="danger"
-                                        onClick={() => void toggleEmployee(employee)}
-                                        disabled={busy}
-                                      >
-                                        {employee.isActive ? 'Deactivate' : 'Reactivate'}
-                                      </Btn>
+                                      <>
+                                        <Btn
+                                          size="xs"
+                                          variant="soft"
+                                          onClick={() => startEditEmployee(employee)}
+                                          disabled={busy}
+                                        >
+                                          <Pencil className="h-3 w-3" /> Edit
+                                        </Btn>
+                                        <Btn
+                                          size="xs"
+                                          variant="danger"
+                                          onClick={() => void toggleEmployee(employee)}
+                                          disabled={busy}
+                                        >
+                                          {employee.isActive ? 'Deactivate' : 'Reactivate'}
+                                        </Btn>
+                                      </>
                                     )}
                                   </div>
                                 ))}

@@ -14,7 +14,7 @@ server/
     0001_better_auth.sql  Better Auth tables (generated)
     0002_domain.sql       schools, employees, holidays, leave, DTR, audit log
     0003_seed_leave_types.sql  global CSC leave types
-    0004_system_admin.sql     system admins + membership approval status
+    0004_system_admin.sql     super admins + membership approval status
     0005_import_zamboanga_sibugay_schools.sql  official 507-school catalog
     0006_official_travels.sql  official travel records
   src/
@@ -92,11 +92,11 @@ Every tenant suite also asserts cross-school isolation (`404` for foreign rows).
 | `GET` | `/api/schools/catalog` | Official school list for AO onboarding |
 | `GET` | `/api/onboarding/memberships` | Current user's school memberships and statuses |
 | `POST` | `/api/onboarding/join` | Request AO access to `{ schoolId }` |
-| `GET/PATCH` | `/api/admin/memberships` | System admin: list (filter by `status`, `role`, `schoolId`, `q`; `limit`/`offset`) and approve/decline/suspend AOs |
-| `GET` | `/api/admin/schools` | System admin: all schools with member/employee counts |
+| `GET/PATCH` | `/api/admin/memberships` | Super admin: list (filter by `status`, `role`, `schoolId`, `q`; `limit`/`offset`) and approve/decline/suspend AOs |
+| `GET` | `/api/admin/schools` | Super admin: all schools with member/employee counts |
 
 Everything below requires an active membership for `:schoolId`, unless the caller
-is a system admin. Non-members get `404` so school IDs do not leak.
+is a super admin. Non-members get `404` so school IDs do not leak.
 
 | Area | Routes |
 |---|---|
@@ -110,13 +110,14 @@ is a system admin. Non-members get `404` so school IDs do not leak.
 | Official travels | `GET/POST .../travels`, `PATCH/DELETE .../travels/:travelId` |
 | DTR periods | `GET/POST .../dtr-periods`, `GET/PATCH/DELETE .../dtr-periods/:periodId` |
 | DTR days | `GET/PUT .../dtr-periods/:periodId/days`, `DELETE .../days/:workDate` |
-| Audit | `GET .../audit-log?limit=50` (owner/admin/ao) |
+| Audit | `GET .../audit-log?limit=50` (AO/super admin) |
 
-Role rules: `system_admin` sees and manages every school; `owner`/`admin` manage
-schools and members; `ao`/`encoder` edit employees, holidays, leave, travels, and DTR; only
-`owner`/`admin`/`ao`/`system_admin` approve or lock. `viewer` is read-only. New
-AO memberships start as `pending` until a system admin approves them. Every
-mutation writes to `audit_log`.
+Role rules: `system_admin` (super admin) sees and manages every school, creates
+schools, and manages memberships. `ao` is the only school membership role: it edits
+employees, holidays, leave, travels, and DTR, and can approve/lock leave and DTR.
+Legacy `owner`/`admin`/`encoder`/`viewer` roles are retired; migration `0007`
+normalizes existing memberships to `ao`. New AO memberships start as `pending`
+until a super admin approves them. Every mutation writes to `audit_log`.
 
 Notes:
 
@@ -128,9 +129,9 @@ Notes:
 - `0003_seed_leave_types.sql` adds global CSC types (VL, SL, SPL, ML, PL, SLPL, STL, EL).
 - `0004_system_admin.sql` adds the global admin table and membership `status`.
 
-## System admin bootstrap
+## Super admin bootstrap
 
-The first system admin must register a normal account, then be granted from the
+The first super admin must register a normal account, then be granted from the
 command line. Better Auth email verification is currently disabled, so this is
 also why public sign-up cannot self-assign the role.
 
@@ -141,7 +142,7 @@ pnpm admin:grant:local --email you@example.com
 pnpm admin:grant:remote --email you@example.com
 ```
 
-The system admin stays in the Admin Console to create schools and approve
+The super admin stays in the Admin Console to create schools and approve
 pending AO requests. School workspaces are opened per school from the school
 detail page; the generic workspace is reserved for school members.
 

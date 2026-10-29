@@ -42,13 +42,11 @@ async function insertHoliday(
 describe('holidays', () => {
   let systemAdmin: SignedInUser
   let ao: SignedInUser
-  let viewer: SignedInUser
   let outsider: SignedInUser
 
   beforeAll(async () => {
     systemAdmin = await signUp('System Admin', 'sysadmin@example.com')
     ao = await signUp('AO One', 'ao@example.com')
-    viewer = await signUp('Viewer One', 'viewer@example.com')
     outsider = await signUp('Outsider One', 'outsider@example.com')
   })
 
@@ -60,7 +58,6 @@ describe('holidays', () => {
     await insertSchool('s-2', 'Beta Elementary', '100002')
 
     await insertMember('m-ao', 's-1', ao.id, 'ao')
-    await insertMember('m-viewer', 's-1', viewer.id, 'viewer')
     await insertMember('m-outsider', 's-2', outsider.id, 'ao')
 
     await insertHoliday('h-global', null, '2026-01-01', "New Year's Day")
@@ -73,12 +70,12 @@ describe('holidays', () => {
   it('requires a session and school membership', async () => {
     expect((await api('/api/schools/s-1/holidays')).status).toBe(401)
     expect((await get('/api/schools/s-1/holidays', outsider.cookie)).status).toBe(404)
-    expect((await get('/api/schools/s-1/holidays', viewer.cookie)).status).toBe(200)
+    expect((await get('/api/schools/s-1/holidays', ao.cookie)).status).toBe(200)
   })
 
   it('lists school holidays plus global ones', async () => {
     const body = await (
-      await get('/api/schools/s-1/holidays', viewer.cookie)
+      await get('/api/schools/s-1/holidays', ao.cookie)
     ).json<HolidayList>()
 
     expect(body.holidays.map((holiday) => holiday.id)).toEqual([
@@ -92,7 +89,7 @@ describe('holidays', () => {
 
   it('filters by year', async () => {
     const body = await (
-      await get('/api/schools/s-1/holidays?year=2026', viewer.cookie)
+      await get('/api/schools/s-1/holidays?year=2026', ao.cookie)
     ).json<HolidayList>()
 
     expect(body.holidays.map((holiday) => holiday.id)).toEqual([
@@ -133,15 +130,6 @@ describe('holidays', () => {
     expect(invalidDate.status).toBe(400)
   })
 
-  it('blocks viewers from writing', async () => {
-    const response = await post('/api/schools/s-1/holidays', viewer.cookie, {
-      holidayDate: '2026-08-21',
-      name: 'Blocked',
-      type: 'regular',
-    })
-    expect(response.status).toBe(403)
-  })
-
   it('updates school holidays but not global or foreign ones', async () => {
     const updated = await patch('/api/schools/s-1/holidays/h-1', ao.cookie, {
       name: 'Day of Valor',
@@ -176,7 +164,7 @@ describe('holidays', () => {
     ).toBeNull()
   })
 
-  it('lets a system admin manage any school', async () => {
+  it('lets a super admin manage any school', async () => {
     const body = await (
       await get('/api/schools/s-2/holidays', systemAdmin.cookie)
     ).json<HolidayList>()

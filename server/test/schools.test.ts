@@ -14,9 +14,8 @@ import {
   type SignedInUser,
 } from './helpers'
 
-const OWNER_EMAIL = 'owner@example.com'
 const AO_EMAIL = 'ao@example.com'
-const VIEWER_EMAIL = 'viewer@example.com'
+const AO2_EMAIL = 'ao2@example.com'
 const OUTSIDER_EMAIL = 'outsider@example.com'
 
 type SchoolBody = {
@@ -30,17 +29,15 @@ type SchoolBody = {
 
 describe('schools and members', () => {
   let systemAdmin: SignedInUser
-  let owner: SignedInUser
   let ao: SignedInUser
-  let viewer: SignedInUser
+  let ao2: SignedInUser
   let pending: SignedInUser
   let outsider: SignedInUser
 
   beforeAll(async () => {
-    systemAdmin = await signUp('System Admin', 'sysadmin@example.com')
-    owner = await signUp('Owner One', OWNER_EMAIL)
+    systemAdmin = await signUp('Super Admin', 'sysadmin@example.com')
     ao = await signUp('AO One', AO_EMAIL)
-    viewer = await signUp('Viewer One', VIEWER_EMAIL)
+    ao2 = await signUp('AO Two', AO2_EMAIL)
     pending = await signUp('Pending One', 'pending@example.com')
     outsider = await signUp('Outsider One', OUTSIDER_EMAIL)
   })
@@ -52,9 +49,8 @@ describe('schools and members', () => {
     await insertSchool('s-1', 'Alpha_One High School', '100001')
     await insertSchool('s-2', 'Beta Elementary', '100002')
 
-    await insertMember('m-owner', 's-1', owner.id, 'owner')
     await insertMember('m-ao', 's-1', ao.id, 'ao')
-    await insertMember('m-viewer', 's-1', viewer.id, 'viewer')
+    await insertMember('m-ao2', 's-1', ao2.id, 'ao')
     await insertMember('m-pending', 's-1', pending.id, 'ao', 'pending')
     await insertMember('m-outsider', 's-2', outsider.id, 'ao')
   })
@@ -64,7 +60,7 @@ describe('schools and members', () => {
     expect(response.status).toBe(401)
   })
 
-  it('lists every school for a system admin', async () => {
+  it('lists every school for a super admin', async () => {
     const response = await get('/api/schools', systemAdmin.cookie)
     expect(response.status).toBe(200)
 
@@ -73,12 +69,10 @@ describe('schools and members', () => {
     expect(body.schools.every((school) => school.role === 'system_admin')).toBe(true)
   })
 
-  it('lists only active memberships for regular users', async () => {
-    const ownerBody = await (
-      await get('/api/schools', owner.cookie)
-    ).json<SchoolBody>()
-    expect(ownerBody.schools.map((school) => school.id)).toEqual(['s-1'])
-    expect(ownerBody.schools[0]?.role).toBe('owner')
+  it('lists only active memberships for AOs', async () => {
+    const aoBody = await (await get('/api/schools', ao.cookie)).json<SchoolBody>()
+    expect(aoBody.schools.map((school) => school.id)).toEqual(['s-1'])
+    expect(aoBody.schools[0]?.role).toBe('ao')
 
     const pendingBody = await (
       await get('/api/schools', pending.cookie)
@@ -103,7 +97,7 @@ describe('schools and members', () => {
     })
   })
 
-  it('only lets system admins create schools', async () => {
+  it('only lets the super admin create schools', async () => {
     const forbidden = await post('/api/schools', ao.cookie, { name: 'Gamma' })
     expect(forbidden.status).toBe(403)
 
@@ -140,12 +134,10 @@ describe('schools and members', () => {
     expect(response.status).toBe(409)
   })
 
-  it('scopes school reads to membership or system admin', async () => {
-    const ownerRead = await get('/api/schools/s-1', owner.cookie)
-    expect(ownerRead.status).toBe(200)
-    expect((await ownerRead.json<{ school: { role: string } }>()).school.role).toBe(
-      'owner',
-    )
+  it('scopes school reads to membership or super admin', async () => {
+    const aoRead = await get('/api/schools/s-1', ao.cookie)
+    expect(aoRead.status).toBe(200)
+    expect((await aoRead.json<{ school: { role: string } }>()).school.role).toBe('ao')
 
     const adminRead = await get('/api/schools/s-2', systemAdmin.cookie)
     expect(adminRead.status).toBe(200)
@@ -153,21 +145,18 @@ describe('schools and members', () => {
       'system_admin',
     )
 
-    expect((await get('/api/schools/s-2', owner.cookie)).status).toBe(404)
+    expect((await get('/api/schools/s-2', ao.cookie)).status).toBe(404)
     expect((await get('/api/schools/s-1', outsider.cookie)).status).toBe(404)
     expect((await get('/api/schools/s-1', pending.cookie)).status).toBe(403)
     expect((await get('/api/schools/missing', systemAdmin.cookie)).status).toBe(404)
   })
 
-  it('lets owners and admins update the school, not AOs or viewers', async () => {
+  it('only lets the super admin update a school', async () => {
     expect(
       (await patch('/api/schools/s-1', ao.cookie, { name: 'Nope' })).status,
     ).toBe(403)
-    expect(
-      (await patch('/api/schools/s-1', viewer.cookie, { name: 'Nope' })).status,
-    ).toBe(403)
 
-    const updated = await patch('/api/schools/s-1', owner.cookie, {
+    const updated = await patch('/api/schools/s-1', systemAdmin.cookie, {
       name: 'Alpha One NHS',
       division: 'Division II',
     })
@@ -175,122 +164,72 @@ describe('schools and members', () => {
     expect(
       (await updated.json<{ school: { name: string; division: string } }>()).school,
     ).toMatchObject({ name: 'Alpha One NHS', division: 'Division II' })
-
-    const adminUpdated = await patch('/api/schools/s-2', systemAdmin.cookie, {
-      region: 'Region IX',
-    })
-    expect(adminUpdated.status).toBe(200)
   })
 
   it('rejects a school update that reuses another code', async () => {
-    const response = await patch('/api/schools/s-1', owner.cookie, {
+    const response = await patch('/api/schools/s-1', systemAdmin.cookie, {
       schoolCode: '100002',
     })
     expect(response.status).toBe(409)
   })
 
   it('lists only active members of a school', async () => {
-    const response = await get('/api/schools/s-1/members', viewer.cookie)
+    const response = await get('/api/schools/s-1/members', ao.cookie)
     expect(response.status).toBe(200)
 
     const body = await response.json<{
       members: { id: string; userId: string; email: string; role: string }[]
     }>()
-    expect(body.members.map((member) => member.id)).toEqual([
-      'm-ao',
-      'm-owner',
-      'm-viewer',
-    ])
-    expect(body.members.map((member) => member.email)).toEqual([
-      AO_EMAIL,
-      OWNER_EMAIL,
-      VIEWER_EMAIL,
-    ])
+    expect(body.members.map((member) => member.id)).toEqual(['m-ao', 'm-ao2'])
+    expect(body.members.map((member) => member.email)).toEqual([AO_EMAIL, AO2_EMAIL])
+    expect(body.members.every((member) => member.role === 'ao')).toBe(true)
 
     expect((await get('/api/schools/s-1/members', outsider.cookie)).status).toBe(404)
   })
 
-  it('only lets owners and admins manage members', async () => {
+  it('only lets the super admin manage members', async () => {
     const forbidden = await post('/api/schools/s-1/members', ao.cookie, {
       email: OUTSIDER_EMAIL,
-      role: 'viewer',
     })
     expect(forbidden.status).toBe(403)
 
-    const added = await post('/api/schools/s-1/members', owner.cookie, {
+    const added = await post('/api/schools/s-1/members', systemAdmin.cookie, {
       email: OUTSIDER_EMAIL,
-      role: 'encoder',
     })
     expect(added.status).toBe(201)
     const addedBody = await added.json<{
       member: { id: string; userId: string; role: string }
     }>()
-    expect(addedBody.member).toMatchObject({ userId: outsider.id, role: 'encoder' })
+    expect(addedBody.member).toMatchObject({ userId: outsider.id, role: 'ao' })
 
-    const duplicate = await post('/api/schools/s-1/members', owner.cookie, {
+    const duplicate = await post('/api/schools/s-1/members', systemAdmin.cookie, {
       email: OUTSIDER_EMAIL,
-      role: 'viewer',
     })
     expect(duplicate.status).toBe(409)
 
-    const unknown = await post('/api/schools/s-1/members', owner.cookie, {
+    const unknown = await post('/api/schools/s-1/members', systemAdmin.cookie, {
       email: 'nobody@example.com',
-      role: 'viewer',
     })
     expect(unknown.status).toBe(404)
 
-    const invalidRole = await post('/api/schools/s-1/members', owner.cookie, {
+    const retiredRole = await post('/api/schools/s-1/members', systemAdmin.cookie, {
       email: OUTSIDER_EMAIL,
-      role: 'owner',
+      role: 'admin',
     })
-    expect(invalidRole.status).toBe(400)
+    expect(retiredRole.status).toBe(400)
   })
 
-  it('changes member roles but protects the owner', async () => {
-    expect(
-      (await patch('/api/schools/s-1/members/m-viewer', ao.cookie, { role: 'ao' }))
-        .status,
-    ).toBe(403)
+  it('only lets the super admin remove members', async () => {
+    expect((await del('/api/schools/s-1/members/m-ao2', ao.cookie)).status).toBe(403)
 
-    const updated = await patch('/api/schools/s-1/members/m-viewer', owner.cookie, {
-      role: 'encoder',
-    })
-    expect(updated.status).toBe(200)
-    expect(
-      (await updated.json<{ member: { role: string } }>()).member.role,
-    ).toBe('encoder')
-
-    const ownerChange = await patch(
-      '/api/schools/s-1/members/m-owner',
-      owner.cookie,
-      { role: 'admin' },
-    )
-    expect(ownerChange.status).toBe(403)
-
-    const crossTenant = await patch(
-      '/api/schools/s-1/members/m-outsider',
-      owner.cookie,
-      { role: 'admin' },
-    )
-    expect(crossTenant.status).toBe(404)
-  })
-
-  it('removes members but never the owner', async () => {
-    expect(
-      (await del('/api/schools/s-1/members/m-viewer', ao.cookie)).status,
-    ).toBe(403)
-
-    const removed = await del('/api/schools/s-1/members/m-viewer', owner.cookie)
+    const removed = await del('/api/schools/s-1/members/m-ao2', systemAdmin.cookie)
     expect(removed.status).toBe(200)
     expect(
-      await env.DB.prepare(`SELECT 1 AS ok FROM school_members WHERE id = 'm-viewer'`).first(),
+      await env.DB.prepare(`SELECT 1 AS ok FROM school_members WHERE id = 'm-ao2'`).first(),
     ).toBeNull()
 
     expect(
-      (await del('/api/schools/s-1/members/m-owner', owner.cookie)).status,
-    ).toBe(403)
-    expect(
-      (await del('/api/schools/s-1/members/m-outsider', owner.cookie)).status,
+      (await del('/api/schools/s-1/members/m-outsider', systemAdmin.cookie)).status,
     ).toBe(404)
   })
 })

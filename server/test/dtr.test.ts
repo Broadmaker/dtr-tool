@@ -43,15 +43,11 @@ type Day = {
 describe('DTR periods and days', () => {
   let systemAdmin: SignedInUser
   let ao: SignedInUser
-  let encoder: SignedInUser
-  let viewer: SignedInUser
   let outsider: SignedInUser
 
   beforeAll(async () => {
     systemAdmin = await signUp('System Admin', 'sysadmin@example.com')
     ao = await signUp('AO One', 'ao@example.com')
-    encoder = await signUp('Encoder One', 'encoder@example.com')
-    viewer = await signUp('Viewer One', 'viewer@example.com')
     outsider = await signUp('Outsider One', 'outsider@example.com')
   })
 
@@ -63,8 +59,6 @@ describe('DTR periods and days', () => {
     await insertSchool('s-2', 'Beta Elementary', '100002')
 
     await insertMember('m-ao', 's-1', ao.id, 'ao')
-    await insertMember('m-encoder', 's-1', encoder.id, 'encoder')
-    await insertMember('m-viewer', 's-1', viewer.id, 'viewer')
     await insertMember('m-outsider', 's-2', outsider.id, 'ao')
 
     await insertEmployee('e-1', 's-1', 'Ana', 'Cruz')
@@ -90,7 +84,7 @@ describe('DTR periods and days', () => {
     expect(
       (await get('/api/schools/s-1/dtr-periods', outsider.cookie)).status,
     ).toBe(404)
-    expect((await get('/api/schools/s-1/dtr-periods', viewer.cookie)).status).toBe(200)
+    expect((await get('/api/schools/s-1/dtr-periods', ao.cookie)).status).toBe(200)
   })
 
   it('creates periods for school employees only', async () => {
@@ -124,56 +118,44 @@ describe('DTR periods and days', () => {
       month: 13,
     })
     expect(invalidMonth.status).toBe(400)
-
-    const viewerCreate = await post('/api/schools/s-1/dtr-periods', viewer.cookie, {
-      employeeId: 'e-1',
-      year: 2026,
-      month: 3,
-    })
-    expect(viewerCreate.status).toBe(403)
   })
 
   it('filters periods by year, month, employee, and status', async () => {
     await createPeriod(ao.cookie, 2026, 3)
     const april = await createPeriod(ao.cookie, 2026, 4)
-    await patch(`/api/schools/s-1/dtr-periods/${april.id}`, encoder.cookie, {
+    await patch(`/api/schools/s-1/dtr-periods/${april.id}`, ao.cookie, {
       status: 'reviewed',
     })
     await createPeriod(ao.cookie, 2025, 3)
 
     const byYear = await (
-      await get('/api/schools/s-1/dtr-periods?year=2026', viewer.cookie)
+      await get('/api/schools/s-1/dtr-periods?year=2026', ao.cookie)
     ).json<{ periods: Period[] }>()
     expect(byYear.periods.map((period) => period.month)).toEqual([4, 3])
 
     const byMonth = await (
-      await get('/api/schools/s-1/dtr-periods?year=2026&month=3', viewer.cookie)
+      await get('/api/schools/s-1/dtr-periods?year=2026&month=3', ao.cookie)
     ).json<{ periods: Period[] }>()
     expect(byMonth.periods).toHaveLength(1)
     expect(byMonth.periods[0]?.month).toBe(3)
 
     const byStatus = await (
-      await get('/api/schools/s-1/dtr-periods?status=reviewed', viewer.cookie)
+      await get('/api/schools/s-1/dtr-periods?status=reviewed', ao.cookie)
     ).json<{ periods: Period[] }>()
     expect(byStatus.periods.map((period) => period.id)).toEqual([april.id])
 
     const byEmployee = await (
-      await get('/api/schools/s-1/dtr-periods?employeeId=e-1&year=2025', viewer.cookie)
+      await get('/api/schools/s-1/dtr-periods?employeeId=e-1&year=2025', ao.cookie)
     ).json<{ periods: Period[] }>()
     expect(byEmployee.periods).toHaveLength(1)
   })
 
-  it('enforces period transitions and approver rights', async () => {
+  it('enforces period transitions', async () => {
     const period = await createPeriod(ao.cookie)
     const path = `/api/schools/s-1/dtr-periods/${period.id}`
 
-    expect((await patch(path, viewer.cookie, { status: 'reviewed' })).status).toBe(403)
-
-    const reviewed = await patch(path, encoder.cookie, { status: 'reviewed' })
+    const reviewed = await patch(path, ao.cookie, { status: 'reviewed' })
     expect(reviewed.status).toBe(200)
-
-    const encoderApprove = await patch(path, encoder.cookie, { status: 'approved' })
-    expect(encoderApprove.status).toBe(403)
 
     const approved = await patch(path, ao.cookie, { status: 'approved' })
     expect(approved.status).toBe(200)
@@ -189,7 +171,7 @@ describe('DTR periods and days', () => {
   it('deletes only draft periods', async () => {
     const draft = await createPeriod(ao.cookie, 2026, 3)
     const reviewed = await createPeriod(ao.cookie, 2026, 4)
-    await patch(`/api/schools/s-1/dtr-periods/${reviewed.id}`, encoder.cookie, {
+    await patch(`/api/schools/s-1/dtr-periods/${reviewed.id}`, ao.cookie, {
       status: 'reviewed',
     })
 
@@ -237,7 +219,7 @@ describe('DTR periods and days', () => {
     expect(days.map((day) => day.workDate)).toEqual(['2026-03-02', '2026-03-03'])
     expect(days[0]).toMatchObject({ amIn: '08:05', remarks: 'Late', source: 'manual' })
 
-    const updated = await put(path, encoder.cookie, {
+    const updated = await put(path, ao.cookie, {
       days: [{ workDate: '2026-03-02', amIn: '08:15', source: 'correction' }],
     })
     const updatedDays = (await updated.json<{ days: Day[] }>()).days
@@ -287,14 +269,14 @@ describe('DTR periods and days', () => {
       days: [{ workDate: '2026-03-02', amIn: '08:00' }],
     })
 
-    const read = await get(daysPath, viewer.cookie)
+    const read = await get(daysPath, ao.cookie)
     expect(read.status).toBe(200)
     expect((await read.json<{ days: Day[] }>()).days).toHaveLength(1)
 
     const removed = await del(`${daysPath}/2026-03-02`, ao.cookie)
     expect(removed.status).toBe(200)
 
-    const empty = await get(daysPath, viewer.cookie)
+    const empty = await get(daysPath, ao.cookie)
     expect((await empty.json<{ days: Day[] }>()).days).toEqual([])
   })
 
@@ -305,7 +287,7 @@ describe('DTR periods and days', () => {
     ).run()
 
     expect(
-      (await get('/api/schools/s-1/dtr-periods/p-s2', viewer.cookie)).status,
+      (await get('/api/schools/s-1/dtr-periods/p-s2', ao.cookie)).status,
     ).toBe(404)
     expect(
       (await patch('/api/schools/s-1/dtr-periods/p-s2', ao.cookie, { status: 'reviewed' }))
@@ -315,16 +297,16 @@ describe('DTR periods and days', () => {
       (await del('/api/schools/s-1/dtr-periods/p-s2', ao.cookie)).status,
     ).toBe(404)
     expect(
-      (await get('/api/schools/s-1/dtr-periods/p-s2/days', viewer.cookie)).status,
+      (await get('/api/schools/s-1/dtr-periods/p-s2/days', ao.cookie)).status,
     ).toBe(404)
 
     const list = await (
-      await get('/api/schools/s-1/dtr-periods', viewer.cookie)
+      await get('/api/schools/s-1/dtr-periods', ao.cookie)
     ).json<{ periods: Period[] }>()
     expect(list.periods.map((period) => period.id)).not.toContain('p-s2')
   })
 
-  it('lets a system admin manage any school', async () => {
+  it('lets a super admin manage any school', async () => {
     const created = await post('/api/schools/s-2/dtr-periods', systemAdmin.cookie, {
       employeeId: 'e-2',
       year: 2026,

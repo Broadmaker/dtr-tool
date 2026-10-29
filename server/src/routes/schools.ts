@@ -201,7 +201,7 @@ schools.patch("/:schoolId", async (c) => {
 
 const memberInput = z.object({
   email: z.string().trim().email(),
-  role: z.enum(["admin", "ao", "encoder", "viewer"]),
+  role: z.enum(["ao"]).optional(),
 })
 
 type MemberRow = {
@@ -235,6 +235,7 @@ schools.get("/:schoolId/members", async (c) => {
 schools.post("/:schoolId/members", async (c) => {
   const membership = await requireSchool(c, ADMIN_ROLES)
   const body = await readJson(c, memberInput)
+  const role = body.role ?? "ao"
 
   const user = await c.env.DB.prepare(
     `SELECT id, name, email FROM user WHERE lower(email) = lower(?)`,
@@ -255,7 +256,7 @@ schools.post("/:schoolId/members", async (c) => {
       `INSERT INTO school_members (id, school_id, user_id, role, status)
        VALUES (?, ?, ?, ?, 'active')`,
     )
-      .bind(id, membership.schoolId, user.id, body.role)
+      .bind(id, membership.schoolId, user.id, role)
       .run()
   } catch (error) {
     if (isUniqueViolation(error)) {
@@ -268,7 +269,7 @@ schools.post("/:schoolId/members", async (c) => {
     action: "member.add",
     entityType: "school_member",
     entityId: id,
-    meta: { email: user.email, role: body.role },
+    meta: { email: user.email, role },
   })
 
   return c.json(
@@ -278,51 +279,11 @@ schools.post("/:schoolId/members", async (c) => {
         userId: user.id,
         name: user.name,
         email: user.email,
-        role: body.role,
+        role,
       },
     },
     201,
   )
-})
-
-const memberPatch = z.object({
-  role: z.enum(["admin", "ao", "encoder", "viewer"]),
-})
-
-schools.patch("/:schoolId/members/:memberId", async (c) => {
-  const membership = await requireSchool(c, ADMIN_ROLES)
-  const body = await readJson(c, memberPatch)
-  const memberId = c.req.param("memberId")
-
-  const target = await c.env.DB.prepare(
-    `SELECT id, user_id AS userId, role FROM school_members
-     WHERE id = ? AND school_id = ?`,
-  )
-    .bind(memberId, membership.schoolId)
-    .first<{ id: string; userId: string; role: string }>()
-
-  if (!target) {
-    throw new HTTPException(404, { message: "Member not found" })
-  }
-
-  if (target.role === "owner") {
-    throw new HTTPException(403, { message: "The owner role cannot be changed" })
-  }
-
-  await c.env.DB.prepare(
-    `UPDATE school_members SET role = ? WHERE id = ?`,
-  )
-    .bind(body.role, memberId)
-    .run()
-
-  await audit(c, membership.schoolId, {
-    action: "member.update",
-    entityType: "school_member",
-    entityId: memberId,
-    meta: { from: target.role, to: body.role },
-  })
-
-  return c.json({ member: { id: memberId, userId: target.userId, role: body.role } })
 })
 
 schools.delete("/:schoolId/members/:memberId", async (c) => {
@@ -338,10 +299,6 @@ schools.delete("/:schoolId/members/:memberId", async (c) => {
 
   if (!target) {
     throw new HTTPException(404, { message: "Member not found" })
-  }
-
-  if (target.role === "owner") {
-    throw new HTTPException(403, { message: "The owner cannot be removed" })
   }
 
   await c.env.DB.prepare(`DELETE FROM school_members WHERE id = ?`)

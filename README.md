@@ -91,18 +91,18 @@ Sign in from the top bar to use the shared workspace. It is entirely opt-in and
 separate from the local DTR flow.
 
 - **Onboarding** — browse the official school catalog and request AO access; new
-  AO memberships stay `pending` until a system admin approves them.
+  AO memberships stay `pending` until a super admin approves them.
 - **School workspace** — employees, holidays, leave types/credits/applications,
   official travels, and monthly DTR periods/days. Saves are explicit; the local
   upload → print flow never writes to the cloud.
-- **Roles** — `owner`/`admin` manage the school and members; `ao`/`encoder` edit
-  employees, holidays, leave, travel, and DTR; `viewer` is read-only. Every
-  mutation is written to the school's `audit_log`.
-- **System admin console** (`#/admin`) — schools overview, user approval (single
-  and bulk), school detail, and filterable activity history. System admins can
+- **Roles** — a super admin manages schools, memberships, and approvals; `ao`
+  edits employees, holidays, leave, travel, and DTR, and can approve/lock leave
+  and DTR. Every mutation is written to the school's `audit_log`.
+- **Super admin console** (`#/admin`) — schools overview, user approval (single
+  and bulk), school detail, and filterable activity history. Super admins can
   open any school workspace.
 - **Auth** — Better Auth email/password (Google OAuth optional), first-party
-  cookies via the same-origin Pages proxy. The first system admin is granted from
+  cookies via the same-origin Pages proxy. The first super admin is granted from
   the command line (`server/scripts/grant-admin.mjs`).
 
 ## Themes & accessibility

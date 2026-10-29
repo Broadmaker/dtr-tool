@@ -34,7 +34,7 @@ holidays, leave, travel, DTR).
 | PH holiday preset | ✅ done (`phHolidays.ts` + one-tap load in `HolidayLeaveStep`) |
 | Saved importer presets | ✅ done (`presets.ts`, auto-apply in `needMapping`, save/apply/delete in `ColumnMappingStep`) |
 | Optional cloud workspace (auth, schools, roles) | ✅ done (`server/` + `Workspace.tsx`; local DTR flow unchanged) |
-| System admin console (users, schools, activity) | ✅ done (`AdminConsole.tsx`: bulk approval, filters, pagination, collapsible sidebar, toasts) |
+| Super admin console (users, schools, activity) | ✅ done (`AdminConsole.tsx`: bulk approval, filters, pagination, collapsible sidebar, toasts) |
 | Admin Users server-side filtering | ✅ done (`GET /api/admin/memberships` query + counts; debounced client fetch) |
 | Server typecheck + tests in CI | ✅ done (`.github/workflows/ci.yml`; `@cloudflare/vitest-plugin` + local D1) |
 | Tenant API route tests | ✅ done (`server/test/*.test.ts`: 75 tests across admin, schools, onboarding, employees, holidays, leave, travel, DTR + isolation) |
