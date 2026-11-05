@@ -160,7 +160,10 @@ function DTRSection({
         <strong>{info.name || ''}</strong>
         <div className="signature-line" />
         <em>VERIFIED as to the prescribed office hours</em>
-        <div className="verifier-name">{info.verifier || '\u00A0'}</div>
+        <div className="verifier-block">
+          <div className="verifier-name">{info.verifier || '\u00A0'}</div>
+          {info.verifierPosition ? <div className="verifier-position">{info.verifierPosition}</div> : null}
+        </div>
         <div className="verification-line" />
       </div>
     </section>

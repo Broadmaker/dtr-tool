@@ -44,6 +44,11 @@ const F_CERT = 6.3;
 const F_SIG_NAME = 6.9;
 const F_SIG_EM = 6.2;
 const F_VERIFIER = 6.9;
+const F_VERIFIER_POS = 6.3;
+
+// Optional verifier-position line (.verifier-position): one 8.4px Arial
+// italic line box (≈2.79mm) + 0.3mm margin. Empty string = classic block.
+const VERIFIER_POS_H = 2.79 + 0.3;
 
 // Row heights from dtr.css (mm). Title/identity/signature blocks below follow
 // the exact dtr.css box flow (margins + px line boxes) so the PDF keeps the
@@ -271,8 +276,10 @@ function drawCopy(doc: jsPDF, b: ExportBundle, x0: number, rowH: number, capMont
 
   // Signature block, following the exact .signature box flow: 3.5 margin +
   // name box (9.2px Arial ≈ 2.72) + 0.7 rule gap + 1.2 em margin + em box
-  // (8.3px Times ≈ 2.43) + 3.5 verifier margin + verifier box (3.5 min-height
-  // wins) + 0.7 rule gap. Total 18.25mm — keep SIG_BLOCK in sync.
+  // (8.3px Times ≈ 2.43) + 3.5 verifier margin + verifier box (name 3.5
+  // min-height wins; + optional position line, both bottom-aligned like
+  // .verifier-block) + 0.7 rule gap. 18.25mm classic — keep SIG_BLOCK in sync.
+  const posLine = (b.info.verifierPosition || '').trim();
   y += 3.5;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(F_SIG_NAME);
@@ -286,10 +293,17 @@ function drawCopy(doc: jsPDF, b: ExportBundle, x0: number, rowH: number, capMont
   y += 2.43 + 3.5;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(F_VERIFIER);
-  doc.text(fit(doc, (b.info.verifier || '').toUpperCase(), CW), x0 + CW / 2, y + 2.2, {
+  // With a position line the name sits one line higher in the same box.
+  doc.text(fit(doc, (b.info.verifier || '').toUpperCase(), CW), x0 + CW / 2, y + 2.2 - (posLine ? VERIFIER_POS_H : 0), {
     align: 'center',
   });
-  y += 3.5 + 0.7;
+  if (posLine) {
+    doc.setFont('helvetica', 'italic');
+    doc.setFontSize(F_VERIFIER_POS);
+    // Baseline ≈0.6mm above the old name baseline, inside the position line box.
+    doc.text(fit(doc, posLine, CW), x0 + CW / 2, y + 1.6, { align: 'center' });
+  }
+  y += 3.5 + (posLine ? VERIFIER_POS_H : 0) + 0.7;
   doc.line(x0, y, R, y);
 }
 
@@ -314,13 +328,16 @@ export async function buildDtrPdf(bundle: ExportBundle, opts?: { compress?: bool
 
   // Rows use the exact print height, shaved only as much as the month needs
   // so certification + signatures still fit on the one page. The budget uses
-  // the measured cert line count and the exact 18.25mm signature block.
+  // the measured cert line count and the exact signature block — 18.25mm
+  // classic, plus the verifier-position line when the Setup toggle is on, so
+  // the extra line is absorbed by the day rows and never spills a 2nd page.
+  const sigBlock = 18.25 + ((bundle.info.verifierPosition || '').trim() ? VERIFIER_POS_H : 0);
   const n = bundle.days.length || 1;
   const fixedTop = PAD_TOP + H_TOP_LINE + H_TITLE + H_FIELD * 3 + H_MONTH + H_OFFICIAL;
   doc.setFont('times', 'italic');
   doc.setFontSize(F_CERT);
   const certLines = doc.splitTextToSize(CERT_TEXT, CW).length;
-  const fixedBottom = H_HEAD_1 + H_HEAD_2 + H_TOTAL + 2.1 + certLines * 2.78 + 18.25;
+  const fixedBottom = H_HEAD_1 + H_HEAD_2 + H_TOTAL + 2.1 + certLines * 2.78 + sigBlock;
   const rowH = Math.min(
     ROW_H_PRINT,
     (PAGE_H - PAD_TOP - PAD_BOTTOM - fixedTop - fixedBottom) / n,

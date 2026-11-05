@@ -8,6 +8,10 @@ export interface Prefs {
   officialHours: string;
   fileBase: string;
   verifier: string;
+  /** Verifier's position line, e.g. "Principal I" (shown only when showVerifierPosition) */
+  verifierPosition: string;
+  /** Off by default: the sheet keeps the classic verifier-name-only signature block. */
+  showVerifierPosition: boolean;
 }
 
 const DEFAULTS: Prefs = {
@@ -16,6 +20,8 @@ const DEFAULTS: Prefs = {
   officialHours: '8:00AM–12:00NN & 1:00PM–5:00PM',
   fileBase: 'DTR',
   verifier: '',
+  verifierPosition: '',
+  showVerifierPosition: false,
 };
 
 export function loadPrefs(): Prefs {

@@ -246,14 +246,35 @@
   margin-top: 0.7mm;
 }
 
+.verifier-block {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  margin-top: 3.5mm;
+  min-height: 3.5mm;
+}
+
 .verifier-name {
   display: block;
-  margin-top: 3.5mm;
   min-height: 3.5mm;
   font-size: 9.2px;
   font-weight: 700;
   text-transform: uppercase;
   line-height: 1.1;
+}
+
+/* Optional second line under the signed verifier name (Setup toggle).
+   Empty and unrendered when off, so the block keeps its exact 3.5mm box. */
+.verifier-position {
+  display: block;
+  min-height: 2.6mm;
+  margin-top: 0.3mm;
+  font-size: 8.4px;
+  font-style: italic;
+  line-height: 1.1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* No tool watermark on the printed DTR — the sheet must match CSC Form 48 cleanly. */

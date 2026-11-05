@@ -109,9 +109,12 @@ export function useAttendanceReview(input: AttendanceReviewInput): AttendanceRev
       office: activeStored.office ?? prefs.office,
       officialHours: activeStored.officialHours ?? prefs.officialHours,
       verifier: activeStored.verifier ?? prefs.verifier ?? '',
+      // Verifier's own position line — never falls back to the person's
+      // Position field, otherwise clearing the box would silently reprint it.
+      verifierPosition: prefs.showVerifierPosition ? (activeStored.verifierPosition ?? prefs.verifierPosition ?? '') : '',
     }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [empInfos, activeEmp, prefs.position, prefs.office, prefs.officialHours, prefs.verifier],
+    [empInfos, activeEmp, prefs.position, prefs.office, prefs.officialHours, prefs.verifier, prefs.verifierPosition, prefs.showVerifierPosition],
   );
 
   const chosen = useMemo(

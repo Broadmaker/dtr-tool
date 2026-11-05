@@ -31,6 +31,50 @@ describe('buildBundles', () => {
     expect(amyDay?.incomplete).toBe(false);
   });
 
+  it('prints no verifier position while the Setup toggle is off (classic layout)', () => {
+    const b = buildBundles({
+      employees: [{ name: 'amy', days: {} }],
+      overrides: {},
+      leaves: {},
+      empInfos: { amy: { position: 'Teacher III', verifier: 'MARIA SANTOS', verifierPosition: 'Principal I' } },
+      prefs: { ...prefs, showVerifierPosition: false },
+      month: 9,
+      year: 2026,
+      holidays: [],
+      selected: new Set(['amy']),
+    });
+    expect(b[0].info.verifierPosition).toBe('');
+  });
+
+  it('never borrows the employee position as a hidden default for the verifier', () => {
+    const base = {
+      employees: [{ name: 'amy', days: {} }, { name: 'zed', days: {} }],
+      overrides: {},
+      leaves: {},
+      month: 9,
+      year: 2026,
+      holidays: [],
+      selected: new Set(['amy', 'zed']),
+      prefs: { ...prefs, verifierPosition: '', showVerifierPosition: true },
+    };
+    // Own verifier position is used as typed…
+    const own = buildBundles({
+      ...base,
+      empInfos: { amy: { verifierPosition: 'Principal I' } },
+    });
+    expect(own[0].info.verifierPosition).toBe('Principal I');
+
+    // …but a cleared box stays empty — it must not snap back to 'Teacher III'
+    // (the person's Position) or any other stored default.
+    const cleared = buildBundles({
+      ...base,
+      empInfos: { amy: { verifierPosition: '' }, zed: { position: 'Head Teacher III' } },
+    });
+    expect(cleared[0].info.verifierPosition).toBe('');
+    expect(cleared[1].info.verifierPosition).toBe('');
+    expect(cleared[1].info.position).toBe('Head Teacher III');
+  });
+
   it('scopes to selected employees and applies overrides', () => {
     const b = buildBundles({
       employees: [

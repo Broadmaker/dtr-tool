@@ -25,11 +25,13 @@ export default function ConfigStep({
   activeEmp,
   selectedNames,
   selectedCount,
+  showVerifierPosition,
   onMonth,
   onYear,
   onInfo,
   onApplyFieldToAll,
   onSwitchEmp,
+  onShowVerifierPosition,
 }: {
   month: number;
   year: number;
@@ -37,11 +39,13 @@ export default function ConfigStep({
   activeEmp: string;
   selectedNames: string[];
   selectedCount: number;
+  showVerifierPosition: boolean;
   onMonth: (m: number) => void;
   onYear: (y: number) => void;
   onInfo: (p: Partial<EmployeeInfo>) => void;
   onApplyFieldToAll: (field: keyof EmployeeInfo, value: string) => void;
   onSwitchEmp: (name: string) => void;
+  onShowVerifierPosition: (v: boolean) => void;
 }) {
   return (
     <Card>
@@ -163,26 +167,86 @@ export default function ConfigStep({
           </div>
 
           <div className="rounded-xl border border-emerald-100 bg-emerald-50/40 p-3 dark:border-emerald-900/30 dark:bg-emerald-950/20">
-            <Field label="Verifier name" hint="printed above “VERIFIED as to the prescribed office hours”">
-              <div className="relative">
-                <ShieldCheck className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <TextInput
-                  className="pl-9 font-medium tracking-tight"
-                  value={info.verifier ?? ''}
-                  placeholder="e.g. MARIA SANTOS, Principal I"
-                  onChange={(e) => onInfo({ verifier: e.target.value })}
-                />
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <Field label="Verifier name" hint="printed above “VERIFIED as to the prescribed office hours”">
+                  <div className="relative">
+                    <ShieldCheck className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <TextInput
+                      className="pl-9 font-medium tracking-tight"
+                      value={info.verifier ?? ''}
+                      placeholder="e.g. MARIA SANTOS"
+                      onChange={(e) => onInfo({ verifier: e.target.value })}
+                    />
+                  </div>
+                </Field>
+                {selectedCount > 1 && info.verifier ? (
+                  <button type="button" onClick={() => onApplyFieldToAll('verifier', info.verifier)} className="mt-1.5 text-xs font-medium text-emerald-700 hover:text-emerald-900 dark:text-emerald-300 dark:hover:text-emerald-200">
+                    → Apply “{info.verifier}” to all {selectedCount}
+                  </button>
+                ) : (
+                  <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
+                    Usually one signatory for everyone — type once, then “Apply to all”.
+                  </p>
+                )}
               </div>
-            </Field>
-            {selectedCount > 1 && info.verifier ? (
-              <button type="button" onClick={() => onApplyFieldToAll('verifier', info.verifier)} className="mt-1.5 text-xs font-medium text-emerald-700 hover:text-emerald-900 dark:text-emerald-300 dark:hover:text-emerald-200">
-                → Apply “{info.verifier}” to all {selectedCount}
-              </button>
-            ) : (
-              <p className="mt-2 text-xs text-emerald-700 dark:text-emerald-300">
-                Usually one signatory for everyone — type once, then “Apply to all”.
-              </p>
-            )}
+              <div>
+                <Field label="Verifier position" hint="printed just below the verifier’s name">
+                  <div className="relative">
+                    <Briefcase className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <TextInput
+                      className="pl-9 font-medium tracking-tight"
+                      value={info.verifierPosition ?? ''}
+                      placeholder={showVerifierPosition ? 'e.g. Principal I' : 'Turn the toggle on to print a position'}
+                      disabled={!showVerifierPosition}
+                      onChange={(e) => onInfo({ verifierPosition: e.target.value })}
+                    />
+                  </div>
+                </Field>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  {showVerifierPosition && info.position && info.verifierPosition !== info.position ? (
+                    <button
+                      type="button"
+                      onClick={() => onInfo({ verifierPosition: info.position })}
+                      className="text-xs font-medium text-emerald-700 hover:text-emerald-900 dark:text-emerald-300 dark:hover:text-emerald-200"
+                    >
+                      ↧ Use employee position “{info.position}”
+                    </button>
+                  ) : null}
+                  {selectedCount > 1 && info.verifierPosition ? (
+                    <button type="button" onClick={() => onApplyFieldToAll('verifierPosition', info.verifierPosition)} className="text-xs font-medium text-emerald-700 hover:text-emerald-900 dark:text-emerald-300 dark:hover:text-emerald-200">
+                      → Apply “{info.verifierPosition}” to all {selectedCount}
+                    </button>
+                  ) : null}
+                </div>
+                {showVerifierPosition && !info.verifierPosition ? (
+                  <p className="mt-1.5 text-xs text-emerald-700 dark:text-emerald-300">
+                    Empty — the DTR prints the verifier’s name only. Type a position, or use “Use employee position”.
+                  </p>
+                ) : null}
+              </div>
+            </div>
+
+            <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-lg border border-emerald-200/70 bg-white/70 px-3 py-2.5 dark:border-emerald-900/40 dark:bg-slate-900/40">
+              <input
+                type="checkbox"
+                role="switch"
+                aria-checked={showVerifierPosition}
+                checked={showVerifierPosition}
+                onChange={(e) => onShowVerifierPosition(e.target.checked)}
+                className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded accent-emerald-600"
+              />
+              <span className="min-w-0">
+                <span className="block text-[12.5px] font-[550] tracking-tight text-emerald-900 dark:text-emerald-200">
+                  Show verifier position on the DTR
+                </span>
+                <span className="mt-0.5 block text-xs leading-relaxed text-emerald-700 dark:text-emerald-300">
+                  {showVerifierPosition
+                    ? 'On — the position prints directly under the verifier’s signed name on every DTR (still one page each).'
+                    : 'Off — the DTR keeps its usual layout: verifier name only.'}
+                </span>
+              </span>
+            </label>
           </div>
         </div>
       </div>

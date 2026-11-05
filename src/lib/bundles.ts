@@ -35,6 +35,9 @@ export function buildBundles(input: BundleInput): ExportBundle[] {
           office: s.office ?? prefs.office,
           officialHours: s.officialHours ?? prefs.officialHours,
           verifier: s.verifier ?? prefs.verifier ?? '',
+          // Same rule as useAttendanceReview: only the verifier's own position;
+          // empty (classic layout) when the toggle is off.
+          verifierPosition: prefs.showVerifierPosition ? (s.verifierPosition ?? prefs.verifierPosition ?? '') : '',
         },
         month,
         year,

@@ -7,7 +7,7 @@ import { buildDtrPdf, bundleToPdfBytes } from './pdf';
 function bundle(
   month: number,
   year: number,
-  opts: { name?: string; days?: DayMap; holidays?: ExportBundle['holidays']; leaves?: ExportBundle['leaves'] } = {},
+  opts: { name?: string; days?: DayMap; holidays?: ExportBundle['holidays']; leaves?: ExportBundle['leaves']; verifierPosition?: string } = {},
 ): ExportBundle {
   const holidays = opts.holidays ?? [];
   const leaves = opts.leaves ?? [];
@@ -18,6 +18,7 @@ function bundle(
       office: 'San Example Elementary School',
       officialHours: '8:00AM–12:00NN & 1:00PM–5:00PM',
       verifier: 'MARIA SANTOS',
+      verifierPosition: opts.verifierPosition ?? '',
     },
     month,
     year,
@@ -73,6 +74,21 @@ describe('buildDtrPdf', () => {
         name: 'DELA CRUZ, JUAN MIGUEL SANTOS REYES VILLANUEVA GARCIA FERNANDEZ',
       }),
     );
+    expect(doc.getNumberOfPages()).toBe(1);
+  });
+
+  it('keeps a 31-day month on one page with the verifier position line', async () => {
+    const doc = await buildDtrPdf(bundle(8, 2026, { verifierPosition: 'Principal I' }), { compress: false });
+    expect(doc.getNumberOfPages()).toBe(1);
+    const raw = new TextDecoder('latin1').decode(doc.output('arraybuffer') as ArrayBuffer);
+    // One position line per copy, drawn italic under the bold verifier name.
+    expect(raw.split('(Principal I)').length - 1).toBe(2);
+  });
+
+  it('does not draw a position line when the Setup toggle is off (empty)', async () => {
+    const doc = await buildDtrPdf(bundle(8, 2026), { compress: false });
+    const raw = new TextDecoder('latin1').decode(doc.output('arraybuffer') as ArrayBuffer);
+    expect(raw.includes('(Principal I)')).toBe(false);
     expect(doc.getNumberOfPages()).toBe(1);
   });
 });

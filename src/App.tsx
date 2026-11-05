@@ -822,6 +822,7 @@ export default function App() {
                 activeEmp={activeEmp}
                 selectedNames={chosen.map((c) => c.name)}
                 selectedCount={chosen.length}
+                showVerifierPosition={prefs.showVerifierPosition ?? false}
                 onMonth={setMonth} onYear={setYear}
                 onInfo={(p) => {
                   // Name/position/office/hours/verifier are per-employee now; keep prefs as default for next time
@@ -842,9 +843,14 @@ export default function App() {
                     patchEmpInfo(activeEmp, { verifier: p.verifier });
                     patchPrefs({ verifier: p.verifier });
                   }
+                  if (p.verifierPosition !== undefined) {
+                    patchEmpInfo(activeEmp, { verifierPosition: p.verifierPosition });
+                    patchPrefs({ verifierPosition: p.verifierPosition });
+                  }
                 }}
                 onApplyFieldToAll={applyEmpFieldToAll}
                 onSwitchEmp={(name) => setActiveEmp(name)}
+                onShowVerifierPosition={(v) => patchPrefs({ showVerifierPosition: v })}
               />
               </Suspense>
             )}

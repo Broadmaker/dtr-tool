@@ -125,6 +125,7 @@ export async function buildBatchWorkbook(bundles: ExportBundle[]) {
     rows.push([safeCell(b.info.name)]);
     rows.push(['Verified as to the prescribed office hours']);
     rows.push([safeCell(b.info.verifier || '')]);
+    if (b.info.verifierPosition) rows.push([safeCell(b.info.verifierPosition)]);
 
     const ws = XLSX.utils.aoa_to_sheet(rows);
     ws['!cols'] = [{ wch: 14 }, { wch: 13 }, { wch: 14 }, { wch: 13 }, { wch: 14 }, { wch: 10 }, { wch: 8 }];

@@ -18,7 +18,7 @@ describe('safeCell (formula-injection guard)', () => {
 
 function bundle(name: string): ExportBundle {
   return {
-    info: { name, position: '', office: '', officialHours: '', verifier: '' },
+    info: { name, position: '', office: '', officialHours: '', verifier: '', verifierPosition: '' },
     month: 9,
     year: 2026,
     days: [],
@@ -66,6 +66,26 @@ describe('buildBatchWorkbook (duplicate employees)', () => {
   it('exports same-name employees as separate sheets without throwing', async () => {
     const wb = await buildBatchWorkbook([bundle('JUAN DELA CRUZ'), bundle('JUAN DELA CRUZ')]);
     expect(wb.SheetNames).toEqual(['JUAN DELA CRUZ', 'JUAN DELA CRUZ (2)']);
+  });
+
+  it('prints the verifier position directly under the verifier name, only when set', async () => {
+    const XLSX = await import('xlsx');
+    const withPos = bundle('JUAN DELA CRUZ');
+    withPos.info.verifier = 'MARIA SANTOS';
+    withPos.info.verifierPosition = 'Principal I';
+    const withoutPos = bundle('PEDRO REYES');
+    withoutPos.info.verifier = 'MARIA SANTOS';
+
+    const wb = await buildBatchWorkbook([withPos, withoutPos]);
+    const rowsWith = XLSX.utils.sheet_to_json<string[]>(wb.Sheets['JUAN DELA CRUZ'], { header: 1 });
+    const rowsWithout = XLSX.utils.sheet_to_json<string[]>(wb.Sheets['PEDRO REYES'], { header: 1 });
+    const flatWith = rowsWith.map((r) => r[0]);
+    const flatWithout = rowsWithout.map((r) => r[0]);
+
+    const vi = flatWith.indexOf('Verified as to the prescribed office hours');
+    expect(flatWith.slice(vi + 1, vi + 3)).toEqual(['MARIA SANTOS', 'Principal I']);
+    const vj = flatWithout.indexOf('Verified as to the prescribed office hours');
+    expect(flatWithout.slice(vj + 1)).toEqual(['MARIA SANTOS']);
   });
 });
 

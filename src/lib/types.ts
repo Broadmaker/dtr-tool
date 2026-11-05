@@ -51,6 +51,8 @@ export interface EmployeeInfo {
   officialHours: string;
   /** Name printed above the "VERIFIED as to the prescribed office hours" line */
   verifier: string;
+  /** Verifier's position (e.g. "Principal I"), printed directly under the verifier's signed name when the Setup toggle is on */
+  verifierPosition: string;
 }
 
 export type DayKind =
