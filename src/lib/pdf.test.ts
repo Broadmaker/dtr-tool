@@ -85,6 +85,20 @@ describe('buildDtrPdf', () => {
     expect(raw.split('(Principal I)').length - 1).toBe(2);
   });
 
+  it('draws the position under the verification rule, after the verifier name', async () => {
+    const doc = await buildDtrPdf(bundle(9, 2026, { verifierPosition: 'Principal I' }), { compress: false });
+    const raw = new TextDecoder('latin1').decode(doc.output('arraybuffer') as ArrayBuffer);
+    const posAt = raw.indexOf('(Principal I)');
+    const nameAt = raw.lastIndexOf('(MARIA SANTOS)', posAt);
+    // The last stroke between the verifier name and the position must be the
+    // verification rule, drawn above the position (jsPDF y grows downward).
+    const between = raw.slice(nameAt, posAt);
+    const rule = between.lastIndexOf(' l\nS\n');
+    expect(nameAt).toBeGreaterThan(-1);
+    expect(rule).toBeGreaterThan(-1);
+    expect(raw.slice(nameAt + rule, posAt).includes('(VERIFIED as to the prescribed office hours)')).toBe(false);
+  });
+
   it('does not draw a position line when the Setup toggle is off (empty)', async () => {
     const doc = await buildDtrPdf(bundle(8, 2026), { compress: false });
     const raw = new TextDecoder('latin1').decode(doc.output('arraybuffer') as ArrayBuffer);

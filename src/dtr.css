@@ -263,12 +263,13 @@
   line-height: 1.1;
 }
 
-/* Optional second line under the signed verifier name (Setup toggle).
-   Empty and unrendered when off, so the block keeps its exact 3.5mm box. */
+/* Optional position line BELOW the solid verification line (Setup toggle):
+   verifier name → solid line → position. Unrendered when empty, so the
+   classic block keeps its exact height. Height is budgeted in pdf.ts. */
 .verifier-position {
   display: block;
   min-height: 2.6mm;
-  margin-top: 0.3mm;
+  margin-top: 0.4mm;
   font-size: 8.4px;
   font-style: italic;
   line-height: 1.1;

@@ -51,7 +51,7 @@ export interface EmployeeInfo {
   officialHours: string;
   /** Name printed above the "VERIFIED as to the prescribed office hours" line */
   verifier: string;
-  /** Verifier's position (e.g. "Principal I"), printed directly under the verifier's signed name when the Setup toggle is on */
+  /** Verifier's position (e.g. "Principal I"), printed under the solid signature line below the verifier's name, when the Setup toggle is on */
   verifierPosition: string;
 }
 

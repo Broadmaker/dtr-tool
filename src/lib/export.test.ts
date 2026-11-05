@@ -68,7 +68,7 @@ describe('buildBatchWorkbook (duplicate employees)', () => {
     expect(wb.SheetNames).toEqual(['JUAN DELA CRUZ', 'JUAN DELA CRUZ (2)']);
   });
 
-  it('prints the verifier position directly under the verifier name, only when set', async () => {
+  it('prints the verifier position under the signature line, only when set', async () => {
     const XLSX = await import('xlsx');
     const withPos = bundle('JUAN DELA CRUZ');
     withPos.info.verifier = 'MARIA SANTOS';
@@ -83,7 +83,10 @@ describe('buildBatchWorkbook (duplicate employees)', () => {
     const flatWithout = rowsWithout.map((r) => r[0]);
 
     const vi = flatWith.indexOf('Verified as to the prescribed office hours');
-    expect(flatWith.slice(vi + 1, vi + 3)).toEqual(['MARIA SANTOS', 'Principal I']);
+    // name → blank (the rule) → position
+    expect(flatWith[vi + 1]).toBe('MARIA SANTOS');
+    expect(flatWith[vi + 3]).toBe('Principal I');
+    expect(flatWith.slice(vi + 1, vi + 4)).toHaveLength(3);
     const vj = flatWithout.indexOf('Verified as to the prescribed office hours');
     expect(flatWithout.slice(vj + 1)).toEqual(['MARIA SANTOS']);
   });

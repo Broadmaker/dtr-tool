@@ -125,9 +125,21 @@ export async function buildBatchWorkbook(bundles: ExportBundle[]) {
     rows.push([safeCell(b.info.name)]);
     rows.push(['Verified as to the prescribed office hours']);
     rows.push([safeCell(b.info.verifier || '')]);
-    if (b.info.verifierPosition) rows.push([safeCell(b.info.verifierPosition)]);
+    const verifierRow = rows.length - 1;
+    if (b.info.verifierPosition) {
+      // Same order as the print sheet: name → solid line → position. The
+      // blank row carries the bottom border (the rule) the position sits under.
+      rows.push([]);
+      rows.push([safeCell(b.info.verifierPosition)]);
+    }
 
     const ws = XLSX.utils.aoa_to_sheet(rows);
+    if (b.info.verifierPosition) {
+      const ref = XLSX.utils.encode_cell({ r: verifierRow, c: 0 });
+      const style = { border: { bottom: { style: 'thin', color: { rgb: '222222' } } } };
+      if (ws[ref]) ws[ref].s = style;
+      else ws[ref] = { t: 's', v: '', s: style };
+    }
     ws['!cols'] = [{ wch: 14 }, { wch: 13 }, { wch: 14 }, { wch: 13 }, { wch: 14 }, { wch: 10 }, { wch: 8 }];
     // merges for header area (optional visual)
     ws['!merges'] = [

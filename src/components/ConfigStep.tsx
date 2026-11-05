@@ -191,7 +191,7 @@ export default function ConfigStep({
                 )}
               </div>
               <div>
-                <Field label="Verifier position" hint="printed just below the verifier’s name">
+                <Field label="Verifier position" hint="printed under the solid signature line below the verifier’s name">
                   <div className="relative">
                     <Briefcase className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <TextInput
@@ -242,7 +242,7 @@ export default function ConfigStep({
                 </span>
                 <span className="mt-0.5 block text-xs leading-relaxed text-emerald-700 dark:text-emerald-300">
                   {showVerifierPosition
-                    ? 'On — the position prints directly under the verifier’s signed name on every DTR (still one page each).'
+                    ? 'On — the position prints under the solid signature line below the verifier’s name on every DTR (still one page each).'
                     : 'Off — the DTR keeps its usual layout: verifier name only.'}
                 </span>
               </span>

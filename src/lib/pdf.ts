@@ -46,9 +46,9 @@ const F_SIG_EM = 6.2;
 const F_VERIFIER = 6.9;
 const F_VERIFIER_POS = 6.3;
 
-// Optional verifier-position line (.verifier-position): one 8.4px Arial
-// italic line box (≈2.79mm) + 0.3mm margin. Empty string = classic block.
-const VERIFIER_POS_H = 2.79 + 0.3;
+// Optional verifier-position line under the verification rule: 0.4mm margin
+// + one 8.4px Arial italic line box (≈2.79mm). Empty string = classic block.
+const VERIFIER_POS_H = 0.4 + 2.79;
 
 // Row heights from dtr.css (mm). Title/identity/signature blocks below follow
 // the exact dtr.css box flow (margins + px line boxes) so the PDF keeps the
@@ -114,7 +114,6 @@ function drawCopy(doc: jsPDF, b: ExportBundle, x0: number, rowH: number, capMont
   const xU2 = xU1 + U_W;
   const official = b.info.officialHours || '08:00:00-12:00:00  13:00:00-17:00:00';
 
-  doc.setDrawColor(40);
   doc.setLineWidth(0.28);
   doc.setTextColor(0, 0, 0);
 
@@ -276,9 +275,9 @@ function drawCopy(doc: jsPDF, b: ExportBundle, x0: number, rowH: number, capMont
 
   // Signature block, following the exact .signature box flow: 3.5 margin +
   // name box (9.2px Arial ≈ 2.72) + 0.7 rule gap + 1.2 em margin + em box
-  // (8.3px Times ≈ 2.43) + 3.5 verifier margin + verifier box (name 3.5
-  // min-height wins; + optional position line, both bottom-aligned like
-  // .verifier-block) + 0.7 rule gap. 18.25mm classic — keep SIG_BLOCK in sync.
+  // (8.3px Times ≈ 2.43) + 3.5 verifier margin + verifier box (3.5 min-height)
+  // + 0.7 rule gap. 18.25mm classic — then, only when a position is set, a
+  // second rule-free line under it: verifier name → solid line → position.
   const posLine = (b.info.verifierPosition || '').trim();
   y += 3.5;
   doc.setFont('helvetica', 'bold');
@@ -293,18 +292,21 @@ function drawCopy(doc: jsPDF, b: ExportBundle, x0: number, rowH: number, capMont
   y += 2.43 + 3.5;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(F_VERIFIER);
-  // With a position line the name sits one line higher in the same box.
-  doc.text(fit(doc, (b.info.verifier || '').toUpperCase(), CW), x0 + CW / 2, y + 2.2 - (posLine ? VERIFIER_POS_H : 0), {
+  doc.text(fit(doc, (b.info.verifier || '').toUpperCase(), CW), x0 + CW / 2, y + 2.2, {
     align: 'center',
   });
+  y += 3.5 + 0.7;
+  doc.line(x0, y, R, y);
   if (posLine) {
+    // .verifier-position: sit in its line box just under the rule (rule gap
+    // 0.43 + 0.4mm margin + ~2mm to the italic baseline). Reset the stroke
+    // colour so the next copy's rules stay black, not the table's #222.
+    doc.setDrawColor(40);
     doc.setFont('helvetica', 'italic');
     doc.setFontSize(F_VERIFIER_POS);
-    // Baseline ≈0.6mm above the old name baseline, inside the position line box.
-    doc.text(fit(doc, posLine, CW), x0 + CW / 2, y + 1.6, { align: 'center' });
+    doc.text(fit(doc, posLine, CW), x0 + CW / 2, y + 2.0, { align: 'center' });
+    doc.setDrawColor(0);
   }
-  y += 3.5 + (posLine ? VERIFIER_POS_H : 0) + 0.7;
-  doc.line(x0, y, R, y);
 }
 
 function capMonthName(month: number): string {
