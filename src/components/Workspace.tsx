@@ -90,6 +90,7 @@ type Props = {
   onSaveDtr: (schoolId: string) => Promise<{
     saved: number;
     skipped: number;
+    reopened: number;
     created: number;
     updated: number;
     inactive: number;
@@ -1286,10 +1287,13 @@ export default function Workspace({
         ? ` Skipped ${result.inactive} inactive employee${result.inactive === 1 ? '' : 's'} — reactivate them in the roster to save their DTR.`
         : '';
       const skipped = result.skipped
-        ? ` Skipped ${result.skipped} approved or locked period${result.skipped === 1 ? '' : 's'}.`
+        ? ` Skipped ${result.skipped} locked period${result.skipped === 1 ? '' : 's'}.`
+        : '';
+      const reopened = result.reopened
+        ? ` Reopened ${result.reopened} reviewed or approved period${result.reopened === 1 ? '' : 's'} for reapproval.`
         : '';
       setSaveResult(
-        `Saved ${result.saved} DTR${result.saved === 1 ? '' : 's'}.${updated}${created}${inactive}${skipped}`,
+        `Saved ${result.saved} DTR${result.saved === 1 ? '' : 's'}.${updated}${created}${inactive}${reopened}${skipped}`,
       );
       await loadPeriods(schoolId);
     } catch (cause) {
@@ -1304,6 +1308,11 @@ export default function Workspace({
     status: CloudDtrPeriod['status'],
   ) => {
     if (!schoolId) return;
+    if (
+      period.status === 'locked' &&
+      status === 'draft' &&
+      !window.confirm('Reopen this locked DTR? It must be reviewed and approved again after changes.')
+    ) return;
     setBusy(true);
     setError('');
     setNotice('');
@@ -2857,6 +2866,13 @@ export default function Workspace({
                                   >
                                     <p className="text-sm font-medium">{period.employeeName}</p>
                                     <Badge tone={statusTone(period.status)}>{period.status}</Badge>
+                                    {(period.approvedByName || period.reviewedByName) && (
+                                      <p className="basis-full text-[11px] text-slate-500 dark:text-slate-400">
+                                        {period.approvedByName
+                                          ? `Approved by ${period.approvedByName}${period.approvedAt ? ` · ${new Date(period.approvedAt * 1000).toLocaleString()}` : ''}`
+                                          : `Reviewed by ${period.reviewedByName}${period.reviewedAt ? ` · ${new Date(period.reviewedAt * 1000).toLocaleString()}` : ''}`}
+                                      </p>
+                                    )}
                                     <div className="ml-auto flex flex-wrap gap-1.5">
                                       {canWrite && period.status === 'draft' && (
                                         <Btn
@@ -2891,6 +2907,16 @@ export default function Workspace({
                                         </Btn>
                                       )}
                                       {canWrite && period.status === 'reviewed' && (
+                                        <Btn
+                                          size="xs"
+                                          variant="ghost"
+                                          onClick={() => void changePeriod(period, 'draft')}
+                                          disabled={busy}
+                                        >
+                                          Reopen
+                                        </Btn>
+                                      )}
+                                      {canApprove && period.status === 'locked' && (
                                         <Btn
                                           size="xs"
                                           variant="ghost"

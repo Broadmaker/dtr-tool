@@ -503,6 +503,7 @@ export default function App() {
 
     let saved = 0;
     let skipped = 0;
+    let reopened = 0;
     let inactive = 0;
     let created = 0;
     let updated = 0;
@@ -556,16 +557,17 @@ export default function App() {
       const period =
         periods[0] ?? (await createDtrPeriod(schoolId, { employeeId: employee.id, year, month }));
 
-      if (period.status === 'approved' || period.status === 'locked') {
+      if (period.status === 'locked') {
         skipped += 1;
         continue;
       }
 
-      await saveDtrDays(schoolId, period.id, bundle.days.map(toCloudDay));
+      const saveResult = await saveDtrDays(schoolId, period.id, bundle.days.map(toCloudDay));
+      if (saveResult.reapprovalRequired) reopened += 1;
       saved += 1;
     }
 
-    return { saved, skipped, created, updated, inactive };
+    return { saved, skipped, reopened, created, updated, inactive };
   }, [bundles, effectiveEmployees, empInfos, month, year]);
 
   const stamp = `${monthName(month).toLowerCase()}_${year}`;

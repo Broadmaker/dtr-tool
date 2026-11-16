@@ -25,6 +25,12 @@ type Period = {
   month: number
   status: string
   lockedAt: number | null
+  reviewedById: string | null
+  reviewedByName: string | null
+  reviewedAt: number | null
+  approvedById: string | null
+  approvedByName: string | null
+  approvedAt: number | null
 }
 
 type Day = {
@@ -156,9 +162,23 @@ describe('DTR periods and days', () => {
 
     const reviewed = await patch(path, ao.cookie, { status: 'reviewed' })
     expect(reviewed.status).toBe(200)
+    const reviewedPeriod = (await reviewed.json<{ period: Period }>()).period
+    expect(reviewedPeriod).toMatchObject({
+      reviewedById: ao.id,
+      reviewedByName: 'AO One',
+      approvedById: null,
+    })
+    expect(reviewedPeriod.reviewedAt).not.toBeNull()
 
     const approved = await patch(path, ao.cookie, { status: 'approved' })
     expect(approved.status).toBe(200)
+    const approvedPeriod = (await approved.json<{ period: Period }>()).period
+    expect(approvedPeriod).toMatchObject({
+      reviewedById: ao.id,
+      approvedById: ao.id,
+      approvedByName: 'AO One',
+    })
+    expect(approvedPeriod.approvedAt).not.toBeNull()
 
     const locked = await patch(path, ao.cookie, { status: 'locked' })
     expect(locked.status).toBe(200)
@@ -259,6 +279,81 @@ describe('DTR periods and days', () => {
     expect(
       (await del(`${daysPath}/2026-03-02`, ao.cookie)).status,
     ).toBe(409)
+
+    const reopened = await patch(periodPath, ao.cookie, { status: 'draft' })
+    expect(reopened.status).toBe(200)
+    expect((await reopened.json<{ period: Period }>()).period).toMatchObject({
+      status: 'draft',
+      reviewedById: null,
+      approvedById: null,
+      lockedAt: null,
+    })
+    expect(
+      (
+        await put(daysPath, ao.cookie, {
+          days: [{ workDate: '2026-03-02', amIn: '09:00' }],
+        })
+      ).status,
+    ).toBe(200)
+  })
+
+  it('reopens an approved period after an AO changes a day and audits the values', async () => {
+    const period = await createPeriod(ao.cookie)
+    const periodPath = `/api/schools/s-1/dtr-periods/${period.id}`
+    const daysPath = `${periodPath}/days`
+
+    await put(daysPath, ao.cookie, {
+      days: [{ workDate: '2026-03-02', amIn: '08:00', source: 'import' }],
+    })
+    await patch(periodPath, ao.cookie, { status: 'approved' })
+
+    const unchanged = await put(daysPath, ao.cookie, {
+      days: [{ workDate: '2026-03-02', amIn: '08:00', source: 'import' }],
+    })
+    expect(unchanged.status).toBe(200)
+    expect(
+      (await unchanged.json<{ period: Period; reapprovalRequired: boolean }>()).reapprovalRequired,
+    ).toBe(false)
+    expect((await (await get(periodPath, ao.cookie)).json<{ period: Period }>()).period.status)
+      .toBe('approved')
+
+    const changed = await put(daysPath, ao.cookie, {
+      days: [{ workDate: '2026-03-02', amIn: '08:15', source: 'correction' }],
+    })
+    expect(changed.status).toBe(200)
+
+    const reopened = (await (await get(periodPath, ao.cookie)).json<{ period: Period }>()).period
+    expect(reopened).toMatchObject({
+      status: 'draft',
+      reviewedById: null,
+      reviewedAt: null,
+      approvedById: null,
+      approvedAt: null,
+    })
+
+    const auditRow = await env.DB.prepare(
+      `SELECT meta_json AS metaJson
+       FROM audit_log
+       WHERE action = 'dtr_days.upsert' AND entity_id = ?
+       ORDER BY rowid DESC LIMIT 1`,
+    )
+      .bind(period.id)
+      .first<{ metaJson: string }>()
+    const meta = JSON.parse(auditRow?.metaJson ?? '{}') as {
+      fromStatus?: string
+      toStatus?: string
+      reapprovalRequired?: boolean
+      changes?: Array<{ before: { amIn: string }; after: { amIn: string } }>
+    }
+    expect(meta).toMatchObject({
+      fromStatus: 'approved',
+      toStatus: 'draft',
+      reapprovalRequired: true,
+    })
+    expect(meta.changes?.[0]).toMatchObject({
+      before: { amIn: '08:00' },
+      after: { amIn: '08:15' },
+    })
   })
 
   it('reads and deletes days', async () => {

@@ -26,7 +26,7 @@ const ALLOWED_TRANSITIONS: Record<PeriodStatus, PeriodStatus[]> = {
   draft: ["reviewed", "approved"],
   reviewed: ["draft", "approved"],
   approved: ["reviewed", "locked"],
-  locked: [],
+  locked: ["draft"],
 }
 
 const PERIOD_SELECT = `
@@ -36,10 +36,18 @@ const PERIOD_SELECT = `
          (e.first_name || ' ' || e.last_name) AS employeeName,
          p.year, p.month, p.status,
          p.locked_at AS lockedAt,
+         p.reviewed_by AS reviewedById,
+         reviewer.name AS reviewedByName,
+         p.reviewed_at AS reviewedAt,
+         p.approved_by AS approvedById,
+         approver.name AS approvedByName,
+         p.approved_at AS approvedAt,
          p.created_at AS createdAt,
          p.updated_at AS updatedAt
   FROM dtr_periods p
   JOIN employees e ON e.id = p.employee_id
+  LEFT JOIN user reviewer ON reviewer.id = p.reviewed_by
+  LEFT JOIN user approver ON approver.id = p.approved_by
 `
 
 type PeriodRow = {
@@ -51,6 +59,12 @@ type PeriodRow = {
   month: number
   status: PeriodStatus
   lockedAt: number | null
+  reviewedById: string | null
+  reviewedByName: string | null
+  reviewedAt: number | null
+  approvedById: string | null
+  approvedByName: string | null
+  approvedAt: number | null
   createdAt: number
   updatedAt: number
 }
@@ -150,12 +164,21 @@ dtr.patch("/dtr-periods/:periodId", async (c) => {
   const periodId = c.req.param("periodId")
 
   const current = await fetchPeriod(c, membership.schoolId, periodId)
+  const actorId = c.get("authSession").user.id
+  const changedAt = Math.floor(Date.now() / 1000)
 
   if (body.status !== current.status) {
     if (body.status === "approved" || body.status === "locked") {
       if (!APPROVER_ROLES.includes(membership.role)) {
         throw new HTTPException(403, {
           message: "Only an approver can approve or lock a period",
+        })
+      }
+    }
+    if (current.status === "locked" && body.status === "draft") {
+      if (!APPROVER_ROLES.includes(membership.role)) {
+        throw new HTTPException(403, {
+          message: "Only an approver can reopen a locked period",
         })
       }
     }
@@ -166,14 +189,44 @@ dtr.patch("/dtr-periods/:periodId", async (c) => {
     }
   }
 
+  let reviewedById = current.reviewedById
+  let reviewedAt = current.reviewedAt
+  let approvedById = current.approvedById
+  let approvedAt = current.approvedAt
+
+  if (body.status !== current.status) {
+    if (body.status === "draft") {
+      reviewedById = null
+      reviewedAt = null
+      approvedById = null
+      approvedAt = null
+    } else if (body.status === "reviewed") {
+      reviewedById = actorId
+      reviewedAt = changedAt
+      approvedById = null
+      approvedAt = null
+    } else if (body.status === "approved") {
+      // Direct approval by an AO also counts as that AO's review.
+      reviewedById ??= actorId
+      reviewedAt ??= changedAt
+      approvedById = actorId
+      approvedAt = changedAt
+    }
+  }
+
   await c.env.DB.prepare(
     `UPDATE dtr_periods
-     SET status = ?, locked_at = ?, updated_at = unixepoch()
+     SET status = ?, locked_at = ?, reviewed_by = ?, reviewed_at = ?,
+         approved_by = ?, approved_at = ?, updated_at = unixepoch()
      WHERE id = ?`,
   )
     .bind(
       body.status,
       body.status === "locked" ? Math.floor(Date.now() / 1000) : null,
+      reviewedById,
+      reviewedAt,
+      approvedById,
+      approvedAt,
       periodId,
     )
     .run()
@@ -273,7 +326,7 @@ const dayInput = z.object({
 })
 
 const daysInput = z.object({
-  days: z.array(dayInput).max(31),
+  days: z.array(dayInput).min(1).max(31),
 })
 
 dtr.put("/dtr-periods/:periodId/days", async (c) => {
@@ -294,6 +347,18 @@ dtr.put("/dtr-periods/:periodId/days", async (c) => {
       })
     }
   }
+
+  const { results: beforeRows } = await c.env.DB.prepare(
+    `${DAY_SELECT} WHERE period_id = ? ORDER BY work_date`,
+  )
+    .bind(period.id)
+    .all<DayRow>()
+  const changedDates = new Set(body.days.map((day) => day.workDate))
+  const beforeByDate = new Map(
+    beforeRows
+      .filter((day) => changedDates.has(day.workDate))
+      .map((day) => [day.workDate, auditDay(day)]),
+  )
 
   if (body.days.length > 0) {
     await c.env.DB.batch(
@@ -336,20 +401,47 @@ dtr.put("/dtr-periods/:periodId/days", async (c) => {
     .bind(period.id)
     .run()
 
-  await audit(c, membership.schoolId, {
-    action: "dtr_days.upsert",
-    entityType: "dtr_period",
-    entityId: period.id,
-    meta: { count: body.days.length },
-  })
-
   const { results } = await c.env.DB.prepare(
     `${DAY_SELECT} WHERE period_id = ? ORDER BY work_date`,
   )
     .bind(period.id)
     .all<DayRow>()
+  const afterByDate = new Map(
+    results
+      .filter((day) => changedDates.has(day.workDate))
+      .map((day) => [day.workDate, auditDay(day)]),
+  )
+  const changes = [...changedDates]
+    .map((workDate) => ({
+      workDate,
+      before: beforeByDate.get(workDate) ?? null,
+      after: afterByDate.get(workDate) ?? null,
+    }))
+    .filter((change) => JSON.stringify(change.before) !== JSON.stringify(change.after))
+  const previousStatus = period.status
+  const reapprovalRequired =
+    changes.length > 0 && (previousStatus === "reviewed" || previousStatus === "approved")
 
-  return c.json({ days: results })
+  if (reapprovalRequired) {
+    await reopenPeriod(c, period.id)
+  }
+
+  await audit(c, membership.schoolId, {
+    action: "dtr_days.upsert",
+    entityType: "dtr_period",
+    entityId: period.id,
+    meta: {
+      submittedCount: body.days.length,
+      changedCount: changes.length,
+      fromStatus: previousStatus,
+      toStatus: reapprovalRequired ? "draft" : previousStatus,
+      reapprovalRequired,
+      changes,
+    },
+  })
+
+  const updatedPeriod = await fetchPeriod(c, membership.schoolId, period.id)
+  return c.json({ days: results, period: updatedPeriod, reapprovalRequired })
 })
 
 dtr.delete("/dtr-periods/:periodId/days/:workDate", async (c) => {
@@ -361,21 +453,68 @@ dtr.delete("/dtr-periods/:periodId/days/:workDate", async (c) => {
     throw new HTTPException(409, { message: "This period is locked" })
   }
 
+  const removed = await c.env.DB.prepare(
+    `${DAY_SELECT} WHERE period_id = ? AND work_date = ?`,
+  )
+    .bind(period.id, workDate)
+    .first<DayRow>()
+
   await c.env.DB.prepare(
     `DELETE FROM dtr_days WHERE period_id = ? AND work_date = ?`,
   )
     .bind(period.id, workDate)
     .run()
 
+  const reapprovalRequired =
+    removed !== null && (period.status === "reviewed" || period.status === "approved")
+  if (reapprovalRequired) {
+    await reopenPeriod(c, period.id)
+  }
+
   await audit(c, membership.schoolId, {
     action: "dtr_day.delete",
     entityType: "dtr_period",
     entityId: period.id,
-    meta: { workDate },
+    meta: {
+      workDate,
+      removed: removed ? auditDay(removed) : null,
+      fromStatus: period.status,
+      toStatus: reapprovalRequired ? "draft" : period.status,
+      reapprovalRequired,
+    },
   })
 
   return c.json({ ok: true })
 })
+
+function auditDay(day: DayRow) {
+  return {
+    amIn: day.amIn,
+    amOut: day.amOut,
+    pmIn: day.pmIn,
+    pmOut: day.pmOut,
+    dayType: day.dayType,
+    leaveApplicationId: day.leaveApplicationId,
+    remarks: day.remarks,
+    source: day.source,
+  }
+}
+
+async function reopenPeriod(
+  c: { env: AppEnv["Bindings"] },
+  periodId: string,
+): Promise<void> {
+  await c.env.DB.prepare(
+    `UPDATE dtr_periods
+     SET status = 'draft', locked_at = NULL,
+         reviewed_by = NULL, reviewed_at = NULL,
+         approved_by = NULL, approved_at = NULL,
+         updated_at = unixepoch()
+     WHERE id = ?`,
+  )
+    .bind(periodId)
+    .run()
+}
 
 async function fetchPeriod(
   c: { env: AppEnv["Bindings"] },

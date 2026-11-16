@@ -607,6 +607,12 @@ export type CloudDtrPeriod = {
   month: number
   status: 'draft' | 'reviewed' | 'approved' | 'locked'
   lockedAt: number | null
+  reviewedById: string | null
+  reviewedByName: string | null
+  reviewedAt: number | null
+  approvedById: string | null
+  approvedByName: string | null
+  approvedAt: number | null
 }
 
 export type DtrDayInput = {
@@ -662,8 +668,8 @@ export async function saveDtrDays(
   schoolId: string,
   periodId: string,
   days: DtrDayInput[],
-): Promise<void> {
-  await request(`/api/schools/${schoolId}/dtr-periods/${periodId}/days`, {
+): Promise<{ period: CloudDtrPeriod; reapprovalRequired: boolean }> {
+  return request(`/api/schools/${schoolId}/dtr-periods/${periodId}/days`, {
     method: 'PUT',
     ...json({ days }),
   })
