@@ -38,6 +38,7 @@ import {
   deleteHoliday,
   deleteOfficialTravel,
   getSession,
+  listDtrDays,
   listDtrPeriods,
   listEmployees,
   listHolidays,
@@ -57,6 +58,7 @@ import {
   updateOfficialTravel,
 } from '../lib/api';
 import type {
+  CloudDtrDay,
   CloudDtrPeriod,
   CloudEmployee,
   CloudHoliday,
@@ -87,6 +89,11 @@ type Props = {
   onAdminChange: (value: boolean) => void;
   onOpenAdmin: () => void;
   onImportHolidays: (holidays: LocalHoliday[]) => void;
+  onOpenDtr: (
+    period: CloudDtrPeriod,
+    employee: CloudEmployee,
+    days: CloudDtrDay[],
+  ) => void;
   onSaveDtr: (schoolId: string) => Promise<{
     saved: number;
     skipped: number;
@@ -386,6 +393,7 @@ export default function Workspace({
   onOpenAdmin,
   onImportHolidays,
   onSaveDtr,
+  onOpenDtr,
 }: Props) {
   const [booting, setBooting] = useState(true);
   const [user, setUser] = useState<CloudUser | null>(null);
@@ -1320,6 +1328,34 @@ export default function Workspace({
       await updateDtrPeriod(schoolId, period.id, status);
       await loadPeriods(schoolId);
       setNotice(`Period marked ${status}.`);
+    } catch (cause) {
+      fail(cause);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openSavedDtr = async (period: CloudDtrPeriod) => {
+    if (!schoolId) return;
+    if (
+      hasDtr &&
+      !window.confirm(
+        'Opening this saved DTR will replace the DTR currently loaded in your browser. Continue?',
+      )
+    ) return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      let employee = employees.find((item) => item.id === period.employeeId);
+      if (!employee) {
+        const roster = await listEmployees(schoolId, { includeInactive: true });
+        setEmployees(roster);
+        employee = roster.find((item) => item.id === period.employeeId);
+      }
+      if (!employee) throw new Error('The employee for this saved DTR is no longer available.');
+      const cloudDays = await listDtrDays(schoolId, period.id);
+      onOpenDtr(period, employee, cloudDays);
     } catch (cause) {
       fail(cause);
     } finally {
@@ -2874,6 +2910,14 @@ export default function Workspace({
                                       </p>
                                     )}
                                     <div className="ml-auto flex flex-wrap gap-1.5">
+                                      <Btn
+                                        size="xs"
+                                        variant="soft"
+                                        onClick={() => void openSavedDtr(period)}
+                                        disabled={busy}
+                                      >
+                                        <FileText className="h-3 w-3" /> Open
+                                      </Btn>
                                       {canWrite && period.status === 'draft' && (
                                         <Btn
                                           size="xs"
@@ -2954,7 +2998,9 @@ export default function Workspace({
                   </span>
                 </div>
                 <p className="max-w-xl leading-relaxed">
-                  Saving a DTR uploads only that month’s day records to your school workspace.
+                  Saving uploads only that month’s day records. Opening restores them in the
+                  local editor; verify Setup because the original Excel and print settings are
+                  not stored.
                 </p>
                 <div className="flex flex-wrap items-center gap-3">
                   {isSystemAdmin && (

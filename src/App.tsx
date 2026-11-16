@@ -51,7 +51,8 @@ import {
   saveDtrDays,
   updateEmployee,
 } from './lib/api';
-import type { DtrDayInput } from './lib/api';
+import type { CloudDtrDay, CloudDtrPeriod, CloudEmployee, DtrDayInput } from './lib/api';
+import { cloudDtrToLocal } from './lib/cloudDtr';
 import { useAttendanceReview } from './hooks/useAttendanceReview';
 import { useBeforeUnload } from './hooks/useBeforeUnload';
 import {
@@ -240,6 +241,33 @@ export default function App() {
     setStep(1);
     flash(`Loaded ${r.employees.length} employee(s) from ${f.name}`);
   };
+
+  const openCloudDtr = useCallback((
+    period: CloudDtrPeriod,
+    employee: CloudEmployee,
+    cloudDays: CloudDtrDay[],
+  ) => {
+    const loaded = cloudDtrToLocal(period, employee, cloudDays);
+    const name = period.employeeName;
+    setParsed(loaded.parsed);
+    setFileName(loaded.fileName);
+    setMonth(period.month);
+    setYear(period.year);
+    setSelected(new Set([name]));
+    setActiveEmp(name);
+    setOverrides({});
+    setHolidays(loaded.holidays);
+    setLeaves(loaded.leaves);
+    setEmpInfos(loaded.empInfos);
+    setHistory([]);
+    clearUndoSnapshot();
+    setMapFile(null);
+    setMapPreview(null);
+    setMapError('');
+    setStep(3);
+    closeWorkspace();
+    flash(`Opened ${name}'s saved DTR. Verify Setup details before printing.`);
+  }, [closeWorkspace, flash]);
 
   const clearAll = () => {
     setConfirm({
@@ -725,6 +753,7 @@ export default function App() {
             );
           }}
           onSaveDtr={saveDtrToCloud}
+          onOpenDtr={openCloudDtr}
         />
       </Suspense>
     );

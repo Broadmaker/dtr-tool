@@ -95,6 +95,10 @@ separate from the local DTR flow.
 - **School workspace** — employees, holidays, leave types/credits/applications,
   official travels, and monthly DTR periods/days. Saves are explicit; the local
   upload → print flow never writes to the cloud.
+- **Open saved DTR** — a saved monthly period can be loaded back into the local
+  review and print editor. This restores its structured day records and uses the
+  employee's current roster position. The original workbook and local print/setup
+  settings are not stored, so verify Setup before producing the final printout.
 - **Roster matching on save** — a saved DTR is matched to roster employees by
   employee number (when the biometric export includes one), then by normalized
   name: `LAST, FIRST` order is reordered, missing middle names and

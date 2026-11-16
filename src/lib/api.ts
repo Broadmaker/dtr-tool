@@ -626,6 +626,14 @@ export type DtrDayInput = {
   source: 'import' | 'manual' | 'correction'
 }
 
+export type CloudDtrDay = DtrDayInput & {
+  id: string
+  periodId: string
+  leaveApplicationId: string | null
+  createdAt: number
+  updatedAt: number
+}
+
 export async function listDtrPeriods(
   schoolId: string,
   opts: { year?: number; month?: number; employeeId?: string } = {},
@@ -662,6 +670,16 @@ export async function updateDtrPeriod(
     { method: 'PATCH', ...json({ status }) },
   )
   return data.period
+}
+
+export async function listDtrDays(
+  schoolId: string,
+  periodId: string,
+): Promise<CloudDtrDay[]> {
+  const data = await request<{ days: CloudDtrDay[] }>(
+    `/api/schools/${schoolId}/dtr-periods/${periodId}/days`,
+  )
+  return data.days
 }
 
 export async function saveDtrDays(
