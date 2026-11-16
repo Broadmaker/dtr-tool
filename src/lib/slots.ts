@@ -197,8 +197,10 @@ export function assignFourSlotsWithKind(punches: RawPunch[]): [string, string, s
 /** Collapse RawPunch[] into per-employee per-day 4-slot attendance. */
 export function normalizePunches(punches: RawPunch[]): EmployeeAttendance[] {
   const byEmp = new Map<string, Map<string, RawPunch[]>>();
+  const empNos = new Map<string, string>();
   for (const p of punches) {
     if (!p.employee || !p.date || !p.time) continue;
+    if (p.employeeNo && !empNos.has(p.employee)) empNos.set(p.employee, p.employeeNo);
     let days = byEmp.get(p.employee);
     if (!days) { days = new Map(); byEmp.set(p.employee, days); }
     let list = days.get(p.date);
@@ -215,7 +217,8 @@ export function normalizePunches(punches: RawPunch[]): EmployeeAttendance[] {
         : assignFourSlots(list.map((p) => p.time));
       dayMap[date] = { amIn, amOut, pmIn, pmOut, corrected: false };
     }
-    out.push({ name, days: dayMap });
+    const employeeNo = empNos.get(name);
+    out.push({ name, days: dayMap, ...(employeeNo ? { employeeNo } : {}) });
   }
   out.sort((a, b) => a.name.localeCompare(b.name));
   return out;

@@ -3,6 +3,8 @@
 
 export interface RawPunch {
   employee: string;
+  /** Biometric/employee number when the export carries one */
+  employeeNo?: string;
   /** YYYY-MM-DD */
   date: string;
   /** HH:MM 24-hour */
@@ -25,6 +27,8 @@ export type DayMap = Record<string, DayEntry>;
 export interface EmployeeAttendance {
   /** Display name as found in file */
   name: string;
+  /** Biometric/employee number when the export carries one */
+  employeeNo?: string;
   days: DayMap;
 }
 

@@ -95,6 +95,11 @@ separate from the local DTR flow.
 - **School workspace** — employees, holidays, leave types/credits/applications,
   official travels, and monthly DTR periods/days. Saves are explicit; the local
   upload → print flow never writes to the cloud.
+- **Roster matching on save** — a saved DTR is matched to roster employees by
+  employee number (when the biometric export includes one), then by normalized
+  name: `LAST, FIRST` order is reordered, missing middle names and
+  punctuation/hyphens are tolerated. Unmatched employees are created, and a
+  missing employee number on an otherwise matched roster entry is backfilled.
 - **Roles** — a super admin manages schools, memberships, and approvals; `ao`
   edits employees, holidays, leave, travel, and DTR, and can approve/lock leave
   and DTR. Every mutation is written to the school's `audit_log`.

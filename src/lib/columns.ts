@@ -1,6 +1,7 @@
 // Column-mapping types shared by the parser and the mapping UI (set-up.md §12).
 export interface ColumnMap {
   employee: number; // -1 = unmapped
+  employeeNo?: number;
   date: number;
   time: number;
   kind: number;
@@ -13,4 +14,4 @@ export interface SheetPreview {
   totalRows: number;
 }
 
-export const unmapped: ColumnMap = { employee: -1, date: -1, time: -1, kind: -1 };
+export const unmapped: ColumnMap = { employee: -1, employeeNo: -1, date: -1, time: -1, kind: -1 };

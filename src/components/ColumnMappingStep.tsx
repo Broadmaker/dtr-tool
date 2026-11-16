@@ -6,6 +6,7 @@ import { Btn, Card, SectionTitle, SelectInput, TextInput } from './ui';
 
 const FIELDS: { key: keyof ColumnMap; label: string; required?: boolean }[] = [
   { key: 'employee', label: 'Employee name', required: true },
+  { key: 'employeeNo', label: 'Employee no.', required: false },
   { key: 'date', label: 'Date', required: true },
   { key: 'time', label: 'Time', required: true },
   { key: 'kind', label: 'IN / OUT', required: false },
@@ -56,7 +57,7 @@ export default function ColumnMappingStep({
             <span className="text-xs font-semibold tracking-tight text-slate-700 dark:text-slate-300 inline-flex items-center gap-1.5">
               <Columns3 className="h-3 w-3 text-slate-400" /> {f.label} {f.required && <span className="text-red-500">*</span>}
             </span>
-            <SelectInput value={map[f.key]} onChange={(e) => onChange({ ...map, [f.key]: Number(e.target.value) })}>
+            <SelectInput value={map[f.key] ?? -1} onChange={(e) => onChange({ ...map, [f.key]: Number(e.target.value) })}>
               <option value={-1}>— Not in file —</option>
               {preview.headers.map((h, i) => (
                 <option key={i} value={i}>

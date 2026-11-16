@@ -52,9 +52,39 @@ const cellTimes = (c: unknown): string[] => {
   return one ? [one] : [];
 };
 
+const ID_HEADERS = [
+  'employee no',
+  'employee no.',
+  'employee id',
+  'employee number',
+  'emp no',
+  'emp no.',
+  'emp id',
+  'id no',
+  'id no.',
+  'id number',
+  'biometric id',
+  'personnel id',
+  'staff id',
+];
+
 export function autoMap(headers: string[]): ColumnMap {
+  let employeeNo = findCol(headers, ID_HEADERS);
+  if (employeeNo < 0) {
+    const bare = headers.findIndex((h) => h === 'id' || h === 'no');
+    if (bare >= 0 && headers.some((h) => h === 'name' || h.includes('employee'))) employeeNo = bare;
+  }
+  let employee = -1;
+  for (const key of ['employee name', 'full name', 'name', 'person', 'employee', 'staff']) {
+    const i = headers.findIndex((h, idx) => idx !== employeeNo && (h === key || h.includes(key)));
+    if (i >= 0) {
+      employee = i;
+      break;
+    }
+  }
   return {
-    employee: findCol(headers, ['employee', 'name', 'person', 'staff']),
+    employee,
+    employeeNo,
     date: findCol(headers, ['date', 'logdate', 'attendance date']),
     time: findCol(headers, ['time', 'logtime', 'clock', 'checktime', 'datetime']),
     kind: findCol(headers, ['type', 'status', 'in/out', 'inout', 'state', 'mode']),
@@ -82,9 +112,11 @@ export async function readSheetGrid(file: File): Promise<SheetPreview> {
 
 function punchesFromMap(rows: unknown[][], map: ColumnMap): RawPunch[] {
   const punches: RawPunch[] = [];
+  const noCol = map.employeeNo ?? -1;
   rows.forEach((r, i) => {
     const emp = map.employee >= 0 ? String(r[map.employee] ?? '').trim() : '';
     if (!emp) return;
+    const employeeNo = noCol >= 0 ? String(r[noCol] ?? '').trim() : '';
     let date = map.date >= 0 ? normalizeDate(r[map.date]) : '';
     let time = map.time >= 0 ? normalizeTime(r[map.time]) : '';
     if ((!date || !time) && map.time >= 0) {
@@ -95,7 +127,14 @@ function punchesFromMap(rows: unknown[][], map: ColumnMap): RawPunch[] {
       }
     }
     if (!date || !time) return;
-    punches.push({ employee: emp, date, time, kind: map.kind >= 0 ? kindOf(r[map.kind]) : null, sourceRow: i + 2 });
+    punches.push({
+      employee: emp,
+      ...(employeeNo ? { employeeNo } : {}),
+      date,
+      time,
+      kind: map.kind >= 0 ? kindOf(r[map.kind]) : null,
+      sourceRow: i + 2,
+    });
   });
   return punches;
 }
@@ -307,7 +346,11 @@ export async function parseBiometricFile(file: File, override?: ColumnMap): Prom
                 if (t) punches.push({ employee: nm, date: iso, time: t, kind: null, sourceRow: 0 });
               }
             }
-            employees.push({ name: nm, days: dayMap });
+            employees.push({
+              name: nm,
+              days: dayMap,
+              ...(emp.id && emp.id !== emp.name ? { employeeNo: emp.id } : {}),
+            });
           }
         }
         employees.sort((a, b) => a.name.localeCompare(b.name));
@@ -416,13 +459,14 @@ export async function parseBiometricFile(file: File, override?: ColumnMap): Prom
   const rows = preview.rows;
   const auto = autoMap(hs);
   const cE = override?.employee ?? auto.employee;
+  const cNo = override?.employeeNo ?? auto.employeeNo ?? -1;
   const cD = override?.date ?? auto.date;
   const cT = override?.time ?? auto.time;
   const cK = override?.kind ?? auto.kind;
   const warnings: string[] = [];
   let punches: RawPunch[] = [];
   if (cE >= 0 && (cD >= 0 || cT >= 0)) {
-    punches = punchesFromMap(rows, { employee: cE, date: cD, time: cT, kind: cK });
+    punches = punchesFromMap(rows, { employee: cE, employeeNo: cNo, date: cD, time: cT, kind: cK });
   } else if (cE >= 0) {
     const days: { col: number; day: number }[] = [];
     hs.forEach((h, col) => {
@@ -444,12 +488,22 @@ export async function parseBiometricFile(file: File, override?: ColumnMap): Prom
     rows.forEach((r, i) => {
       const emp = String(r[cE] ?? '').trim();
       if (!emp) return;
+      const employeeNo = cNo >= 0 ? String(r[cNo] ?? '').trim() : '';
       for (const { col, day } of days) {
         const ts = cellTimes(r[col]);
         if (!ts.length) continue;
         const date = toISODate(assumedYear, assumedMonth, day);
         for (const t of assignFourSlots(ts)) {
-          if (t) punches.push({ employee: emp, date, time: t, kind: null, sourceRow: i + 2 });
+          if (t) {
+            punches.push({
+              employee: emp,
+              ...(employeeNo ? { employeeNo } : {}),
+              date,
+              time: t,
+              kind: null,
+              sourceRow: i + 2,
+            });
+          }
         }
       }
     });

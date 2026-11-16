@@ -91,4 +91,14 @@ describe('normalizePunches', () => {
     ]);
     expect(out).toEqual([]);
   });
+
+  it('carries the employee number through to the normalized employee', () => {
+    const out = normalizePunches([
+      { employee: 'Amy', employeeNo: '0012', date: '2026-09-01', time: '07:30', kind: null, sourceRow: 1 },
+      { employee: 'Amy', employeeNo: '0012', date: '2026-09-01', time: '17:00', kind: null, sourceRow: 2 },
+      { employee: 'Zed', date: '2026-09-01', time: '08:00', kind: null, sourceRow: 3 },
+    ]);
+    expect(out[0]).toMatchObject({ name: 'Amy', employeeNo: '0012' });
+    expect(out[1].employeeNo).toBeUndefined();
+  });
 });

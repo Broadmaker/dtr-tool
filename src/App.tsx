@@ -60,6 +60,7 @@ import {
   snapshotToParseResult,
 } from './lib/session';
 import type { SessionSnapshot } from './lib/session';
+import { matchRosterEmployee } from './lib/rosterMatch';
 
 type Step = 0 | 1 | 2 | 3 | 4 | 5;
 const STEP_LABELS = ['Upload', 'Employees', 'Period', 'Review', 'Holidays', 'Export'];
@@ -487,11 +488,17 @@ export default function App() {
     const normalize = (value: string) => value.toLowerCase().replace(/\s+/g, ' ').trim();
     const displayNameByKey = new Map<string, string>();
     const infoByKey = new Map<string, Partial<EmployeeInfo>>();
+    const employeeNoByKey = new Map<string, string>();
     for (const employee of effectiveEmployees) {
       const info = empInfos[employee.name] ?? {};
       const display = info.name ?? employee.name;
       displayNameByKey.set(normalize(display), display);
       infoByKey.set(normalize(display), info);
+      const no = employee.employeeNo?.trim();
+      if (no) {
+        employeeNoByKey.set(normalize(display), no);
+        employeeNoByKey.set(normalize(employee.name), no);
+      }
     }
 
     let saved = 0;
@@ -502,10 +509,11 @@ export default function App() {
 
     for (const bundle of list) {
       const full = normalize(bundle.info.name);
-      let employee =
-        roster.find((item) =>
-          normalize([item.firstName, item.middleName ?? '', item.lastName].join(' ')) === full,
-        ) ?? roster.find((item) => normalize(`${item.firstName} ${item.lastName}`) === full);
+      const parsedNo = employeeNoByKey.get(full);
+      let employee = matchRosterEmployee(roster, {
+        name: bundle.info.name,
+        employeeNo: parsedNo,
+      });
       const info = infoByKey.get(full) ?? {};
 
       if (!employee) {
@@ -518,6 +526,7 @@ export default function App() {
           firstName,
           lastName,
           middleName,
+          employeeNo: parsedNo ?? null,
           position: info.position?.trim() || bundle.info.position || null,
         });
         roster.push(employee);
@@ -526,9 +535,12 @@ export default function App() {
         inactive += 1;
         continue;
       } else {
+        const patch: { position?: string; employeeNo?: string } = {};
         const position = info.position?.trim();
-        if (position && position !== employee.position) {
-          const updatedEmployee = await updateEmployee(schoolId, employee.id, { position });
+        if (position && position !== employee.position) patch.position = position;
+        if (parsedNo && !employee.employeeNo) patch.employeeNo = parsedNo;
+        if (Object.keys(patch).length) {
+          const updatedEmployee = await updateEmployee(schoolId, employee.id, patch);
           employee = updatedEmployee;
           const index = roster.findIndex((item) => item.id === updatedEmployee.id);
           if (index >= 0) roster[index] = updatedEmployee;
