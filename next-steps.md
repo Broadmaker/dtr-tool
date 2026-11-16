@@ -282,7 +282,10 @@ check that the Pages proxy does not forward unexpected headers.
 - The `localStorage` undo snapshot holds attendance times by design (one
   employee, last edit only). Revisit if the office's privacy reading requires
   it to be memory-only.
-- `officialHours` is a printed string only — no schedule engine yet (see Later).
+- `officialHours` is free text parsed by `parseOfficialHours()`. When it finds
+  fewer than two times it silently falls back to the 8:00–12:00 / 13:00–17:00
+  default, so an unusual office schedule can yield wrong late/undertime
+  numbers without warning.
 
 ---
 

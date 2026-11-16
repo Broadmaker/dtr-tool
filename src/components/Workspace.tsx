@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import {
   ArrowLeft,
   Building2,
@@ -19,6 +19,7 @@ import {
   Plus,
   RefreshCw,
   School as SchoolIcon,
+  Search,
   ShieldCheck,
   Trash2,
   Users,
@@ -211,6 +212,135 @@ function Loading({ label = 'Loading…' }: { label?: string }) {
     <div className="flex items-center gap-2 py-4 text-xs text-slate-500 dark:text-slate-400">
       <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
       {label}
+    </div>
+  );
+}
+
+function EmployeePicker({
+  employees,
+  value,
+  onChange,
+}: {
+  employees: CloudEmployee[];
+  value: string;
+  onChange: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    searchRef.current?.focus();
+    const onPointerDown = (event: MouseEvent) => {
+      if (!wrapRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+        setQuery('');
+      }
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [open]);
+
+  const close = () => {
+    setOpen(false);
+    setQuery('');
+  };
+
+  const selected = employees.find((employee) => employee.id === value);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return employees;
+    return employees.filter((employee) =>
+      [employeeName(employee), employee.employeeNo ?? '', employee.position ?? '']
+        .join(' ')
+        .toLowerCase()
+        .includes(q),
+    );
+  }, [employees, query]);
+
+  return (
+    <div
+      ref={wrapRef}
+      className="relative"
+      onKeyDown={(event) => {
+        if (event.key === 'Escape') close();
+      }}
+    >
+      <button
+        type="button"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label="Employee"
+        onClick={() => (open ? close() : setOpen(true))}
+        className={`flex w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-left text-[13.5px] shadow-sm transition-all hover:border-slate-300 focus:border-brand-500 focus:outline-none focus:ring-4 focus:ring-brand-500/10 dark:border-slate-700 dark:bg-slate-950 dark:hover:border-slate-600 dark:focus:ring-brand-500/15 ${
+          selected ? 'text-slate-900 dark:text-slate-100' : 'text-slate-400 dark:text-slate-500'
+        }`}
+      >
+        <span className="min-w-0 flex-1 truncate">
+          {selected ? employeeName(selected) : 'Select employee'}
+        </span>
+        <ChevronDown
+          className={`h-4 w-4 shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
+        />
+      </button>
+
+      {open && (
+        <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg dark:border-slate-700 dark:bg-slate-950">
+          <div className="flex items-center gap-2 border-b border-slate-200 px-3 py-2 dark:border-slate-800">
+            <Search className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+            <input
+              ref={searchRef}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search employee…"
+              aria-label="Search employees"
+              className="w-full min-w-0 border-0 bg-transparent p-0 text-[13px] text-slate-900 outline-none placeholder:text-slate-400 focus:outline-none focus:ring-0 dark:text-slate-100 dark:placeholder:text-slate-500"
+            />
+          </div>
+          <ul role="listbox" className="max-h-60 overflow-y-auto p-1">
+            {filtered.length === 0 ? (
+              <li className="px-2.5 py-2 text-xs text-slate-500 dark:text-slate-400">
+                No matching employees
+              </li>
+            ) : (
+              filtered.map((employee) => {
+                const meta = [employee.employeeNo, employee.position].filter(Boolean).join(' · ');
+                return (
+                  <li key={employee.id}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={employee.id === value}
+                      onClick={() => {
+                        onChange(employee.id);
+                        close();
+                      }}
+                      className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors ${
+                        employee.id === value
+                          ? 'bg-slate-100 font-medium text-slate-900 dark:bg-slate-800 dark:text-white'
+                          : 'text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800/60'
+                      }`}
+                    >
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate">{employeeName(employee)}</span>
+                        {meta && (
+                          <span className="block truncate text-[11px] font-normal text-slate-500 dark:text-slate-400">
+                            {meta}
+                          </span>
+                        )}
+                      </span>
+                      {employee.id === value && <Check className="h-3.5 w-3.5 shrink-0" />}
+                    </button>
+                  </li>
+                );
+              })
+            )}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -2456,19 +2586,16 @@ export default function Workspace({
                                 onSubmit={submitTravel}
                                 className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-3 dark:border-slate-800 dark:bg-slate-950/40 sm:grid-cols-2"
                               >
-                                <Field label="Employee">
-                                  <SelectInput
+                                <div className="flex flex-col gap-1.5">
+                                  <span className="text-[12.5px] font-[550] tracking-tight text-slate-700 dark:text-slate-200">
+                                    Employee
+                                  </span>
+                                  <EmployeePicker
+                                    employees={activeEmployees}
                                     value={selectedTravelEmp}
-                                    onChange={(event) => setTravelEmp(event.target.value)}
-                                    required
-                                  >
-                                    {activeEmployees.map((employee) => (
-                                      <option key={employee.id} value={employee.id}>
-                                        {employeeName(employee)}
-                                      </option>
-                                    ))}
-                                  </SelectInput>
-                                </Field>
+                                    onChange={setTravelEmp}
+                                  />
+                                </div>
                                 <Field label="Reference no." hint="optional">
                                   <TextInput
                                     value={travelRef}
